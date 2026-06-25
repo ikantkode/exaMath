@@ -1,6 +1,6 @@
-# Construction Accounting App
+# exaMath
 
-A full-stack construction accounting application built with React, Express, and PostgreSQL. Manage projects, track expenses, handle timesheets, and maintain schedules of values — all from one dashboard.
+A full-stack construction accounting application. Manage projects, track expenses, handle timesheets, and maintain schedules of values — all from one dashboard.
 
 ## Features
 
@@ -34,7 +34,8 @@ A full-stack construction accounting application built with React, Express, and 
 ### Docker (recommended)
 
 ```bash
-cd construction-accounting
+git clone https://github.com/ikantkode/exaMath.git
+cd exaMath
 docker compose up --build
 ```
 
@@ -45,9 +46,9 @@ docker compose up --build
 
 **Backend:**
 ```bash
-cd construction-accounting/backend
+cd backend
 npm install
-cp .env.example .env  # configure DATABASE_URL and JWT_SECRET
+cp .env.example .env
 npm run db:generate
 npm run db:migrate
 npm run db:seed        # creates admin user (admin@construction.com / admin123)
@@ -56,7 +57,7 @@ npm run dev
 
 **Frontend:**
 ```bash
-cd construction-accounting/frontend
+cd frontend
 npm install
 npm run dev
 ```
@@ -95,7 +96,7 @@ Export to Excel using the Export button in the status banner.
 ## Project Structure
 
 ```
-construction-accounting/
+exaMath/
 ├── backend/
 │   ├── src/routes/          # Express route handlers
 │   ├── src/middleware/auth.ts
