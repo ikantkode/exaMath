@@ -30,10 +30,8 @@ interface ScheduleOfValue {
 interface ProjectInfo {
   id: string;
   name: string;
-  clientName: string;
-  designNumber?: string;
-  agencyNumber?: string;
-  agencyNumberType?: string;
+  clientName: string | null;
+  projectIdentificationIds: string[];
 }
 
 interface EditCell {
@@ -323,8 +321,9 @@ const SchedulesOfValue = () => {
             {project.name} {project.clientName && ` — ${project.clientName}`}
           </p>
           <div className="flex gap-3 mt-1 text-xs text-gray-400">
-            {project.designNumber && <span>Design#: {project.designNumber}</span>}
-            {project.agencyNumber && <span>{project.agencyNumberType || 'Agency'}#: {project.agencyNumber}</span>}
+            {project.projectIdentificationIds.map(pid => (
+                <span key={pid} className="px-1.5 py-0.5 bg-gray-100 rounded text-gray-600">{pid}</span>
+              ))}
           </div>
         </div>
       </div>

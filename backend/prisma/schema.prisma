@@ -48,26 +48,24 @@ model User {
 }
 
 model Project {
-  id                String        @id @default(uuid())
-  name              String
-  clientName        String
-  originalContract  Float
-  totalChangeOrders Float         @default(0)
-  status            ProjectStatus @default(ACTIVE)
-  estimatedCompletion Float       @default(0)
-  startDate         DateTime?
-  endDate           DateTime?
-  description       String?
-  designNumber      String?
-  agencyNumber      String?
-  agencyNumberType  String?
-  createdAt         DateTime      @default(now())
-  updatedAt         DateTime      @updatedAt
-  budgetCategories  BudgetCategory[]
-  expenses          Expense[]
-  timesheets        Timesheet[]
-  schedulesOfValue  ScheduleOfValue[]
-  changeOrders      ChangeOrder[]
+  id                    String        @id @default(uuid())
+  name                  String
+  clientName            String?
+  originalContract      Float
+  totalChangeOrders     Float         @default(0)
+  status                ProjectStatus @default(ACTIVE)
+  estimatedCompletion   Float         @default(0)
+  startDate             DateTime?
+  endDate               DateTime?
+  description           String?
+  projectIdentificationIds String[]   @default([])
+  createdAt             DateTime      @default(now())
+  updatedAt             DateTime      @updatedAt
+  budgetCategories      BudgetCategory[]
+  expenses              Expense[]
+  timesheets            Timesheet[]
+  schedulesOfValue      ScheduleOfValue[]
+  changeOrders          ChangeOrder[]
 }
 
 model BudgetCategory {

@@ -42,6 +42,8 @@ docker compose up --build
 - Frontend: http://localhost:7307
 - Backend API: http://localhost:3001
 
+On first launch, the app will prompt you to create an admin account. The first account created automatically becomes the **OWNER**.
+
 ### Local Development
 
 **Backend:**
@@ -51,7 +53,6 @@ npm install
 cp .env.example .env
 npm run db:generate
 npm run db:migrate
-npm run db:seed        # creates admin user (admin@construction.com / admin123)
 npm run dev
 ```
 
@@ -61,12 +62,6 @@ cd frontend
 npm install
 npm run dev
 ```
-
-## Default Admin
-
-After seeding, log in with:
-- **Email:** `admin@construction.com`
-- **Password:** `admin123`
 
 ## SOV Inline Editing
 
@@ -81,7 +76,10 @@ Export to Excel using the Export button in the status banner.
 
 | Prefix | Resource |
 |--------|----------|
-| `/api/auth` | Login, register, me |
+| `/api/auth/setup-status` | Check if app needs initial setup |
+| `/api/auth/register` | Create a new user (first user = OWNER) |
+| `/api/auth/login` | Sign in |
+| `/api/auth/me` | Get current user |
 | `/api/projects` | CRUD projects |
 | `/api/budget-categories` | Budget line items |
 | `/api/expenses` | Project expenses |

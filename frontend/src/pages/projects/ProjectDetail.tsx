@@ -8,14 +8,12 @@ import { ArrowLeft, DollarSign, Clock, Edit2, Save, X, Trash2 } from 'lucide-rea
 interface ProjectDetail {
   id: string;
   name: string;
-  clientName: string;
+  clientName: string | null;
   originalContract: number;
   totalChangeOrders: number;
   status: string;
   estimatedCompletion: number;
-  designNumber?: string;
-  agencyNumber?: string;
-  agencyNumberType?: string;
+  projectIdentificationIds: string[];
   totalExpenses: number;
   totalLabor: number;
   totalContractValue: number;
@@ -95,10 +93,11 @@ const ProjectDetail = () => {
       <div className="flex items-start justify-between">
         <div>
           <h1 className="text-2xl font-bold text-gray-900">{project.name}</h1>
-          <p className="text-gray-500">{project.clientName}</p>
-          <div className="flex gap-3 mt-1 text-xs text-gray-400">
-            {project.designNumber && <span>Design#: {project.designNumber}</span>}
-            {project.agencyNumber && <span>{project.agencyNumberType || 'Agency'}#: {project.agencyNumber}</span>}
+          {project.clientName && <p className="text-gray-500">{project.clientName}</p>}
+          <div className="flex gap-2 mt-1 text-xs text-gray-400">
+            {project.projectIdentificationIds.map(pid => (
+              <span key={pid} className="px-1.5 py-0.5 bg-gray-100 rounded text-gray-600">{pid}</span>
+            ))}
           </div>
         </div>
         <div className="flex gap-2">

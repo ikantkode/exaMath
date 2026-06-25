@@ -37,7 +37,7 @@ const Layout = () => {
           {sidebarOpen && (
             <div className="flex items-center gap-2">
               <Building2 className="w-6 h-6 text-blue-400" />
-              <span className="font-bold text-lg">BuildTrack</span>
+              <span className="font-bold text-lg">exaMath</span>
             </div>
           )}
           <button onClick={() => setSidebarOpen(!sidebarOpen)} className="p-1 hover:bg-slate-700 rounded">

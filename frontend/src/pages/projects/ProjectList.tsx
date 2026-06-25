@@ -2,20 +2,18 @@ import React, { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { api, formatCurrency } from '../../utils/api';
 import { useAuth } from '../../context/AuthContext';
-import { Plus, Eye, FolderKanban } from 'lucide-react';
+import { Plus, Eye, FolderKanban, X } from 'lucide-react';
 
 interface Project {
   id: string;
   name: string;
-  clientName: string;
+  clientName: string | null;
   originalContract: number;
   totalChangeOrders: number;
   status: string;
- estimatedCompletion: number;
-   designNumber?: string;
-   agencyNumber?: string;
-   agencyNumberType?: string;
-   totalExpenses: number;
+  estimatedCompletion: number;
+  projectIdentificationIds: string[];
+  totalExpenses: number;
   totalLaborHours: number;
   totalContractValue: number;
   budgetCategories: any[];
@@ -27,7 +25,8 @@ const ProjectList = () => {
   const [projects, setProjects] = useState<Project[]>([]);
   const [loading, setLoading] = useState(true);
   const [showModal, setShowModal] = useState(false);
-  const [formData, setFormData] = useState({ name: '', clientName: '', originalContract: '', status: 'ACTIVE', description: '', designNumber: '', agencyNumber: '', agencyNumberType: '' });
+  const [formData, setFormData] = useState({ name: '', clientName: '', originalContract: '', status: 'ACTIVE', description: '', identificationId: '' });
+  const [identificationIds, setIdentificationIds] = useState<string[]>([]);
 
   useEffect(() => {
     fetchProjects();
@@ -41,13 +40,12 @@ const ProjectList = () => {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    const data = { ...formData, originalContract: parseFloat(formData.originalContract) };
-    if (!data.designNumber) delete data.designNumber;
-    if (!data.agencyNumber) delete data.agencyNumber;
-    if (!data.agencyNumberType) delete data.agencyNumberType;
+    const data: Record<string, any> = { ...formData, originalContract: parseFloat(formData.originalContract), projectIdentificationIds: identificationIds };
+    if (!data.clientName) delete data.clientName;
     await api.post('/projects/', data);
     setShowModal(false);
-    setFormData({ name: '', clientName: '', originalContract: '', status: 'ACTIVE', description: '', designNumber: '', agencyNumber: '', agencyNumberType: '' });
+    setFormData({ name: '', clientName: '', originalContract: '', status: 'ACTIVE', description: '', identificationId: '' });
+    setIdentificationIds([]);
     fetchProjects();
   };
 
@@ -134,8 +132,8 @@ const ProjectList = () => {
                 <input className="input" value={formData.name} onChange={e => setFormData({ ...formData, name: e.target.value })} required />
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Client Name</label>
-                <input className="input" value={formData.clientName} onChange={e => setFormData({ ...formData, clientName: e.target.value })} required />
+                <label className="block text-sm font-medium text-gray-700 mb-1">Client Name (optional)</label>
+                <input className="input" value={formData.clientName} onChange={e => setFormData({ ...formData, clientName: e.target.value })} />
               </div>
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Contract Value ($)</label>
@@ -145,31 +143,23 @@ const ProjectList = () => {
                 <label className="block text-sm font-medium text-gray-700 mb-1">Description</label>
                 <textarea className="input" rows={3} value={formData.description} onChange={e => setFormData({ ...formData, description: e.target.value })} />
               </div>
-              <div className="border-t border-gray-200 pt-3">
-                <p className="text-xs text-gray-400 mb-2">Project ID Numbers (optional — set per your agency)</p>
-                <div className="grid grid-cols-1 gap-3">
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Design Number</label>
-                    <input className="input" value={formData.designNumber} onChange={e => setFormData({ ...formData, designNumber: e.target.value })} placeholder="e.g., D-2024-001" />
-                  </div>
-                  <div className="grid grid-cols-2 gap-3">
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">Agency #</label>
-                      <input className="input" value={formData.agencyNumber} onChange={e => setFormData({ ...formData, agencyNumber: e.target.value })} placeholder="e.g., LLW-1234" />
-                    </div>
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">Type</label>
-                      <select className="select" value={formData.agencyNumberType} onChange={e => setFormData({ ...formData, agencyNumberType: e.target.value })}>
-                        <option value="">Select...</option>
-                        <option value="LLW">LLW (NYC SCB)</option>
-                        <option value="SED">SED (LI UFSD)</option>
-                        <option value="Job">Job #</option>
-                        <option value="Custom">Custom</option>
-                      </select>
-                    </div>
-                  </div>
-                </div>
-              </div>
+<div className="border-t border-gray-200 pt-3">
+                 <p className="text-xs text-gray-400 mb-2">Project ID Numbers (optional — add multiple)</p>
+                 <div className="space-y-2">
+                   {identificationIds.map((idVal, i) => (
+                     <div key={i} className="flex items-center gap-2">
+                       <span className="text-sm text-gray-500">{idVal}</span>
+                       <button type="button" onClick={() => setIdentificationIds(identificationIds.filter((_, idx) => idx !== i))} className="text-red-400 hover:text-red-600">
+                         <X className="w-3.5 h-3.5" />
+                       </button>
+                     </div>
+                   ))}
+                   <div className="flex gap-2">
+                     <input className="input flex-1" value={formData.identificationId} onChange={e => setFormData({ ...formData, identificationId: e.target.value })} placeholder="e.g., D-2024-001" onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); if (formData.identificationId.trim()) { setIdentificationIds([...identificationIds, formData.identificationId.trim()]); setFormData({ ...formData, identificationId: '' }); } } }} />
+                     <button type="button" onClick={() => { if (formData.identificationId.trim()) { setIdentificationIds([...identificationIds, formData.identificationId.trim()]); setFormData({ ...formData, identificationId: '' }); } }} className="btn btn-secondary text-sm px-3">+</button>
+                   </div>
+                 </div>
+               </div>
               <div className="flex gap-3 justify-end">
                 <button type="button" onClick={() => setShowModal(false)} className="btn btn-secondary">Cancel</button>
                 <button type="submit" className="btn btn-primary">Create Project</button>
