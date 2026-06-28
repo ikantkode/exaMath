@@ -1,6 +1,7 @@
 import express from 'express';
 import cors from 'cors';
 import dotenv from 'dotenv';
+import './init-db';
 import authRoutes from './routes/auth';
 import projectRoutes from './routes/projects';
 import budgetCategoryRoutes from './routes/budgetCategories';
@@ -13,6 +14,9 @@ import payoutRoutes from './routes/payouts';
 import auditLogRoutes from './routes/auditLogs';
 import dashboardRoutes from './routes/dashboard';
 import sovRoutes from './routes/schedulesOfValue';
+import userRoutes from './routes/users';
+import employeeRoutes from './routes/employees';
+import fieldWorkerRoutes from './routes/fieldWorkers';
 
 dotenv.config();
 
@@ -34,6 +38,9 @@ app.use('/api/payouts', payoutRoutes);
 app.use('/api/audit-logs', auditLogRoutes);
 app.use('/api/dashboard', dashboardRoutes);
 app.use('/api/schedules-of-value', sovRoutes);
+app.use('/api/users', userRoutes);
+app.use('/api/employees', employeeRoutes);
+app.use('/api/field-workers', fieldWorkerRoutes);
 
 app.get('/api/health', (req, res) => {
   res.json({ status: 'ok', timestamp: new Date().toISOString() });

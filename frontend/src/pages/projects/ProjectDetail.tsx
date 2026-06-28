@@ -1,9 +1,18 @@
-import React, { useEffect, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useParams, Link, useNavigate } from 'react-router-dom';
 import { api, formatCurrency } from '../../utils/api';
 import { useAuth } from '../../context/AuthContext';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 import { ArrowLeft, DollarSign, Clock, Edit2, Save, X, Trash2 } from 'lucide-react';
+import { Button } from '@/components/ui/button';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Input } from '@/components/ui/input';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Label } from '@/components/ui/label';
+import { Badge } from '@/components/ui/badge';
+import { Progress } from '@/components/ui/progress';
+import { Separator } from '@/components/ui/separator';
+import { toast } from '@/components/ui/toast';
 
 interface ProjectDetail {
   id: string;
@@ -14,6 +23,7 @@ interface ProjectDetail {
   status: string;
   estimatedCompletion: number;
   projectIdentificationIds: string[];
+  wageType: string | null;
   totalExpenses: number;
   totalLabor: number;
   totalContractValue: number;
@@ -54,8 +64,9 @@ const ProjectDetail = () => {
       await api.put(`/projects/${id}`, editData);
       setEditing(false);
       api.get<ProjectDetail>(`/projects/${id}`).then(setProject);
+      toast({ title: 'Success', description: 'Project updated successfully' });
     } catch (err: any) {
-      alert(err.message || 'Failed to save project');
+      toast({ title: 'Error', description: err.message || 'Failed to save project', variant: 'destructive' });
     }
   };
 
@@ -64,16 +75,21 @@ const ProjectDetail = () => {
     try {
       await api.delete(`/projects/${id}`);
       navigate('/projects');
+      toast({ title: 'Success', description: 'Project deleted successfully' });
     } catch (err: any) {
-      alert(err.message || 'Failed to delete project');
+      toast({ title: 'Error', description: err.message || 'Failed to delete project', variant: 'destructive' });
     }
   };
 
   const canEdit = user?.role === 'OWNER' || user?.role === 'MANAGER';
   const isOwner = user?.role === 'OWNER';
 
-  if (loading) return <div className="flex items-center justify-center h-64">Loading project details...</div>;
-  if (!project) return <div>Project not found</div>;
+  if (loading) return (
+    <div className="flex items-center justify-center h-64">
+      <div className="h-6 w-6 animate-spin rounded-full border-2 border-primary border-t-transparent" />
+    </div>
+  );
+  if (!project) return <div className="flex items-center justify-center h-64 text-muted-foreground">Project not found</div>;
 
   const budgetData = project.budgetCategories.map(cat => ({
     name: cat.name,
@@ -84,180 +100,283 @@ const ProjectDetail = () => {
   const profit = project.totalContractValue - project.totalExpenses - project.totalLabor;
   const budgetPercent = project.totalContractValue > 0 ? ((project.totalExpenses + project.totalLabor) / project.totalContractValue) * 100 : 0;
 
+  const statusMap: Record<string, 'default' | 'secondary' | 'outline'> = {
+    ACTIVE: 'default',
+    COMPLETED: 'secondary',
+    ON_HOLD: 'outline',
+  };
+
   return (
     <div className="space-y-6">
-      <Link to="/projects" className="inline-flex items-center gap-2 text-gray-500 hover:text-gray-700">
-        <ArrowLeft className="w-4 h-4" /> Back to Projects
+      <Link to="/projects" className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground">
+        <ArrowLeft className="h-4 w-4" />
+        Back to Projects
       </Link>
 
       <div className="flex items-start justify-between">
-        <div>
-          <h1 className="text-2xl font-bold text-gray-900">{project.name}</h1>
-          {project.clientName && <p className="text-gray-500">{project.clientName}</p>}
-          <div className="flex gap-2 mt-1 text-xs text-gray-400">
+        <div className="space-y-1">
+          <h1 className="text-2xl font-bold tracking-tight">{project.name}</h1>
+          {project.clientName && <p className="text-muted-foreground">{project.clientName}</p>}
+          <div className="flex gap-1.5 pt-1">
             {project.projectIdentificationIds.map(pid => (
-              <span key={pid} className="px-1.5 py-0.5 bg-gray-100 rounded text-gray-600">{pid}</span>
+              <Badge key={pid} variant="secondary" className="text-xs">{pid}</Badge>
             ))}
+            {project.wageType && <Badge variant={project.wageType === 'UNION' ? 'default' : project.wageType === 'PREVAILING' ? 'secondary' : 'outline'}>{project.wageType} Wages</Badge>}
           </div>
         </div>
-        <div className="flex gap-2">
+        <div className="flex items-center gap-2">
+          {statusBadge(project.status)}
           {isOwner && !editing && (
-            <button onClick={handleDelete} className="btn btn-secondary text-red-600 hover:text-red-800 flex items-center gap-2">
-              <Trash2 className="w-4 h-4" /> Delete
-            </button>
+            <Button variant="outline" size="sm" onClick={handleDelete} className="text-destructive hover:text-destructive">
+              <Trash2 className="mr-2 h-4 w-4" />
+              Delete
+            </Button>
           )}
           {canEdit && !editing && (
-            <button onClick={() => setEditing(true)} className="btn btn-secondary flex items-center gap-2">
-              <Edit2 className="w-4 h-4" /> Edit
-            </button>
+            <Button variant="outline" size="sm" onClick={() => setEditing(true)}>
+              <Edit2 className="mr-2 h-4 w-4" />
+              Edit
+            </Button>
           )}
         </div>
       </div>
 
       {editing ? (
-        <div className="card space-y-4">
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Completion %</label>
-              <input
-                type="number"
-                className="input"
-                value={editData.estimatedCompletion}
-                onChange={e => setEditData({ ...editData, estimatedCompletion: parseFloat(e.target.value) })}
-              />
+        <Card>
+          <CardHeader>
+            <CardTitle>Edit Project</CardTitle>
+            <CardDescription>Update project details and status</CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              <div className="space-y-2">
+                <Label htmlFor="completion">Completion %</Label>
+                <Input
+                  id="completion"
+                  type="number"
+                  value={editData.estimatedCompletion}
+                  onChange={e => setEditData({ ...editData, estimatedCompletion: parseFloat(e.target.value) })}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="changeOrders">Change Orders ($)</Label>
+                <Input
+                  id="changeOrders"
+                  type="number"
+                  step="0.01"
+                  value={editData.totalChangeOrders}
+                  onChange={e => setEditData({ ...editData, totalChangeOrders: parseFloat(e.target.value) })}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label>Status</Label>
+                <Select
+                  value={editData.status}
+                  onValueChange={value => setEditData({ ...editData, status: value ?? 'ACTIVE' })}
+                >
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="ACTIVE">Active</SelectItem>
+                    <SelectItem value="COMPLETED">Completed</SelectItem>
+                    <SelectItem value="ON_HOLD">On Hold</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
             </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Change Orders ($)</label>
-              <input
-                type="number"
-                step="0.01"
-                className="input"
-                value={editData.totalChangeOrders}
-                onChange={e => setEditData({ ...editData, totalChangeOrders: parseFloat(e.target.value) })}
-              />
+            <div className="flex gap-2">
+              <Button onClick={handleSave}>
+                <Save className="mr-2 h-4 w-4" />
+                Save Changes
+              </Button>
+              <Button variant="outline" onClick={() => setEditing(false)}>
+                <X className="mr-2 h-4 w-4" />
+                Cancel
+              </Button>
             </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Status</label>
-              <select
-                className="select"
-                value={editData.status}
-                onChange={e => setEditData({ ...editData, status: e.target.value })}
-              >
-                <option value="ACTIVE">Active</option>
-                <option value="COMPLETED">Completed</option>
-                <option value="ON_HOLD">On Hold</option>
-              </select>
-            </div>
-          </div>
-          <div className="flex gap-3">
-            <button onClick={handleSave} className="btn btn-primary flex items-center gap-2">
-              <Save className="w-4 h-4" /> Save
-            </button>
-            <button onClick={() => setEditing(false)} className="btn btn-secondary flex items-center gap-2">
-              <X className="w-4 h-4" /> Cancel
-            </button>
-          </div>
-        </div>
+          </CardContent>
+        </Card>
       ) : (
         <>
-          <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-            <div className="card">
-              <div className="flex items-center gap-2 mb-1">
-                <DollarSign className="w-4 h-4 text-gray-400" />
-                <span className="text-sm text-gray-500">Contract Value</span>
-              </div>
-              <p className="text-xl font-bold">{formatCurrency(project.totalContractValue)}</p>
-            </div>
-            <div className="card">
-              <span className="text-sm text-gray-500">Total Expenses</span>
-              <p className="text-xl font-bold">{formatCurrency(project.totalExpenses)}</p>
-            </div>
-            <div className="card">
-              <div className="flex items-center gap-2 mb-1">
-                <Clock className="w-4 h-4 text-gray-400" />
-                <span className="text-sm text-gray-500">Labor Cost</span>
-              </div>
-              <p className="text-xl font-bold">{formatCurrency(project.totalLabor)}</p>
-            </div>
-            <div className="card">
-              <span className="text-sm text-gray-500">Estimated Profit</span>
-              <p className={`text-xl font-bold ${profit >= 0 ? 'text-green-600' : 'text-red-600'}`}>
-                {formatCurrency(profit)}
-              </p>
-            </div>
+          {/* Stats */}
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+            <Card>
+              <CardHeader className="pb-2">
+                <CardDescription>Contract Value</CardDescription>
+                <CardTitle className="text-2xl font-semibold tabular-nums">
+                  {formatCurrency(project.totalContractValue)}
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="flex items-center gap-1 text-xs text-muted-foreground">
+                  <DollarSign className="h-3 w-3" />
+                  Original + change orders
+                </div>
+              </CardContent>
+            </Card>
+            <Card>
+              <CardHeader className="pb-2">
+                <CardDescription>Total Expenses</CardDescription>
+                <CardTitle className="text-2xl font-semibold tabular-nums">
+                  {formatCurrency(project.totalExpenses)}
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="flex items-center gap-1 text-xs text-muted-foreground">
+                  {project.expenses.length} expense records
+                </div>
+              </CardContent>
+            </Card>
+            <Card>
+              <CardHeader className="pb-2">
+                <CardDescription>Labor Cost</CardDescription>
+                <CardTitle className="text-2xl font-semibold tabular-nums">
+                  {formatCurrency(project.totalLabor)}
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="flex items-center gap-1 text-xs text-muted-foreground">
+                  <Clock className="h-3 w-3" />
+                  {project.timesheets.length} time entries
+                </div>
+              </CardContent>
+            </Card>
+            <Card>
+              <CardHeader className="pb-2">
+                <CardDescription>Estimated Profit</CardDescription>
+                <CardTitle className={`text-2xl font-semibold tabular-nums ${profit >= 0 ? 'text-green-600' : 'text-destructive'}`}>
+                  {formatCurrency(profit)}
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <Badge variant="outline" className={profit >= 0 ? '' : 'text-destructive'}>
+                  {profit >= 0 ? 'Under budget' : 'Over budget'}
+                </Badge>
+              </CardContent>
+            </Card>
           </div>
 
-          <div className="card">
-            <h2 className="text-lg font-semibold mb-4">Project Health Gauge</h2>
-            <div className="space-y-4">
-              <div>
-                <div className="flex justify-between text-sm mb-1">
+          {/* Project Health */}
+          <Card>
+            <CardHeader>
+              <CardTitle>Project Health</CardTitle>
+              <CardDescription>Budget utilization and completion progress</CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-6">
+              <div className="space-y-2">
+                <div className="flex justify-between text-sm">
                   <span>Budget Spent</span>
                   <span className="font-medium">{budgetPercent.toFixed(1)}%</span>
                 </div>
-                <div className="w-full bg-gray-200 rounded-full h-4">
+                <div className="w-full overflow-hidden rounded-full bg-muted">
                   <div
-                    className={`h-4 rounded-full transition-all ${budgetPercent > 100 ? 'bg-red-500' : budgetPercent > 80 ? 'bg-yellow-500' : 'bg-green-500'}`}
+                    className={`h-3 rounded-full transition-all ${budgetPercent > 100 ? 'bg-destructive' : budgetPercent > 80 ? 'bg-yellow-500' : 'bg-green-500'}`}
                     style={{ width: `${Math.min(budgetPercent, 100)}%` }}
                   />
                 </div>
               </div>
-              <div>
-                <div className="flex justify-between text-sm mb-1">
+              <Separator />
+              <div className="space-y-2">
+                <div className="flex justify-between text-sm">
                   <span>Physical Completion</span>
                   <span className="font-medium">{project.estimatedCompletion}%</span>
                 </div>
-                <div className="w-full bg-gray-200 rounded-full h-4">
-                  <div className="bg-blue-600 h-4 rounded-full transition-all" style={{ width: `${Math.min(project.estimatedCompletion, 100)}%` }} />
+                <Progress value={project.estimatedCompletion} className="h-3" />
+              </div>
+              <Separator />
+              <Badge variant="outline" className={
+                budgetPercent < project.estimatedCompletion ? 'text-green-600' :
+                budgetPercent > project.estimatedCompletion + 10 ? 'text-destructive' :
+                'text-yellow-600'
+              }>
+                {budgetPercent < project.estimatedCompletion ? 'Under budget — Good progress!' :
+                 budgetPercent > project.estimatedCompletion + 10 ? 'Over budget — Action needed!' :
+                 'On track — Monitor closely'}
+              </Badge>
+            </CardContent>
+          </Card>
+
+          {/* Budget Breakdown */}
+          <Card>
+            <CardHeader>
+              <CardTitle>Cost Category Breakdown</CardTitle>
+              <CardDescription>Budget vs actual spending by category</CardDescription>
+            </CardHeader>
+            <CardContent>
+              {budgetData.length > 0 ? (
+                <div className="h-72">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <BarChart data={budgetData} layout="vertical">
+                      <CartesianGrid strokeDasharray="3 3" />
+                      <XAxis type="number" tickFormatter={formatCurrency} />
+                      <YAxis type="category" dataKey="name" width={80} />
+                      <Tooltip formatter={(value: number) => formatCurrency(value)} />
+                      <Bar dataKey="budget" fill="#93c5fd" name="Budget" radius={[0, 4, 4, 0]} />
+                      <Bar dataKey="spent" fill="#3b82f6" name="Spent" radius={[0, 4, 4, 0]} />
+                    </BarChart>
+                  </ResponsiveContainer>
                 </div>
-              </div>
-              <div className="flex items-center gap-2 text-sm">
-                {budgetPercent < project.estimatedCompletion ? (
-                  <span className="text-green-600 font-medium">Under budget - Good progress!</span>
-                ) : budgetPercent > project.estimatedCompletion + 10 ? (
-                  <span className="text-red-600 font-medium">Over budget - Action needed!</span>
-                ) : (
-                  <span className="text-yellow-600 font-medium">On track - Monitor closely</span>
-                )}
-              </div>
-            </div>
-          </div>
+              ) : (
+                <div className="flex flex-col items-center justify-center py-12 text-center">
+                  <div className="flex h-12 w-12 items-center justify-center rounded-full bg-muted">
+                    <DollarSign className="h-6 w-6 text-muted-foreground" />
+                  </div>
+                  <p className="mt-4 text-sm text-muted-foreground">No budget categories defined</p>
+                </div>
+              )}
+            </CardContent>
+          </Card>
 
-          <div className="card">
-            <h2 className="text-lg font-semibold mb-4">Cost Category Breakdown</h2>
-            {budgetData.length > 0 ? (
-              <div className="h-72">
-                <ResponsiveContainer width="100%" height="100%">
-                  <BarChart data={budgetData} layout="vertical">
-                    <CartesianGrid strokeDasharray="3 3" />
-                    <XAxis type="number" tickFormatter={formatCurrency} />
-                    <YAxis type="category" dataKey="name" width={80} />
-                    <Tooltip formatter={(value: number) => formatCurrency(value)} />
-                    <Bar dataKey="budget" fill="#93c5fd" name="Budget" radius={[0, 4, 4, 0]} />
-                    <Bar dataKey="spent" fill="#3b82f6" name="Spent" radius={[0, 4, 4, 0]} />
-                  </BarChart>
-                </ResponsiveContainer>
-              </div>
-            ) : (
-              <p className="text-gray-400 text-center py-8">No budget categories defined</p>
-            )}
-          </div>
-
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            <Link to={`/projects/${id}/expenses`} className="card hover:shadow-md transition-shadow block">
-              <h3 className="font-semibold mb-2">Expenses</h3>
-              <p className="text-sm text-gray-500">{project.expenses.length} expense records</p>
-              <p className="text-lg font-bold mt-2">{formatCurrency(project.totalExpenses)}</p>
+          {/* Quick Links */}
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+            <Link to={`/projects/${id}/expenses`} className="block">
+              <Card className="h-full transition-shadow hover:shadow-md">
+                <CardHeader className="pb-3">
+                  <CardTitle className="text-base">Expenses</CardTitle>
+                  <CardDescription>{project.expenses.length} expense records</CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <p className="text-lg font-semibold tabular-nums">{formatCurrency(project.totalExpenses)}</p>
+                </CardContent>
+              </Card>
             </Link>
-            <Link to={`/projects/${id}/sov`} className="card hover:shadow-md transition-shadow block">
-              <h3 className="font-semibold mb-2">Schedule of Values</h3>
-              <p className="text-sm text-gray-500">CSI-coded line items</p>
-              <p className="text-sm font-medium text-blue-600 mt-2">Build SOV →</p>
+            <Link to={`/projects/${id}/sov`} className="block">
+              <Card className="h-full transition-shadow hover:shadow-md">
+                <CardHeader className="pb-3">
+                  <CardTitle className="text-base">Schedule of Values</CardTitle>
+                  <CardDescription>CSI-coded line items</CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <div className="flex items-center gap-1 text-sm font-medium text-primary">
+                    Build SOV <ArrowLeft className="h-4 w-4 rotate-180" />
+                  </div>
+                </CardContent>
+              </Card>
             </Link>
-            <Link to={`/projects/${id}/timesheets`} className="card hover:shadow-md transition-shadow block">
-              <h3 className="font-semibold mb-2">Timesheets</h3>
-              <p className="text-sm text-gray-500">{project.timesheets.length} time entries</p>
-              <p className="text-lg font-bold mt-2">{formatCurrency(project.totalLabor)}</p>
+            <Link to={`/projects/${id}/timesheets`} className="block">
+              <Card className="h-full transition-shadow hover:shadow-md">
+                <CardHeader className="pb-3">
+                  <CardTitle className="text-base">Timesheets</CardTitle>
+                  <CardDescription>{project.timesheets.length} time entries</CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <p className="text-lg font-semibold tabular-nums">{formatCurrency(project.totalLabor)}</p>
+                </CardContent>
+              </Card>
+            </Link>
+            <Link to={`/projects/${id}/field-workers`} className="block">
+              <Card className="h-full transition-shadow hover:shadow-md">
+                <CardHeader className="pb-3">
+                  <CardTitle className="text-base">Field Workers</CardTitle>
+                  <CardDescription>Assign & track payroll</CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <div className="flex items-center gap-1 text-sm font-medium text-primary">
+                    View Workers <ArrowLeft className="h-4 w-4 rotate-180" />
+                  </div>
+                </CardContent>
+              </Card>
             </Link>
           </div>
         </>
@@ -265,5 +384,14 @@ const ProjectDetail = () => {
     </div>
   );
 };
+
+function statusBadge(status: string) {
+  const map: Record<string, 'default' | 'secondary' | 'outline'> = {
+    ACTIVE: 'default',
+    COMPLETED: 'secondary',
+    ON_HOLD: 'outline',
+  };
+  return <Badge variant={map[status] || 'secondary'}>{status}</Badge>;
+}
 
 export default ProjectDetail;

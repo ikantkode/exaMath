@@ -1,7 +1,16 @@
-import React, { useEffect, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { api, formatCurrency, formatDate } from '../../utils/api';
 import { useAuth } from '../../context/AuthContext';
-import { Plus, Trash2, RefreshCw, Truck } from 'lucide-react';
+import { Plus, Trash2, RefreshCw, Truck, TrendingDown } from 'lucide-react';
+import { Button } from '@/components/ui/button';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
+import { Separator } from '@/components/ui/separator';
+import { toast } from 'sonner';
 
 interface FixedAsset {
   id: string;
@@ -41,18 +50,21 @@ const FixedAssets = () => {
     setShowModal(false);
     setFormData({ name: '', category: '', purchasePrice: '', purchaseDate: new Date().toISOString().split('T')[0], usefulLife: '' });
     fetchAssets();
+    toast.success('Asset added');
   };
 
   const handleDelete = async (id: string) => {
     if (!confirm('Delete this asset?')) return;
     await api.delete(`/fixed-assets/${id}`);
     fetchAssets();
+    toast.success('Asset deleted');
   };
 
   const handleRecalculate = async () => {
     if (!confirm('Recalculate depreciation for all assets?')) return;
     await api.post('/fixed-assets/recalculate', {});
     fetchAssets();
+    toast.success('Depreciation recalculated');
   };
 
   const isOwner = user?.role === 'OWNER';
@@ -60,133 +72,174 @@ const FixedAssets = () => {
   const totalCurrent = assets.reduce((s, a) => s + a.currentValue, 0);
   const totalDepreciated = totalOriginal - totalCurrent;
 
-  if (loading) return <div className="flex items-center justify-center h-64">Loading assets...</div>;
+  if (loading) return (
+    <div className="flex items-center justify-center h-64">
+      <div className="h-6 w-6 animate-spin rounded-full border-2 border-primary border-t-transparent" />
+    </div>
+  );
 
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-bold text-gray-900">Fixed Assets</h1>
-          <p className="text-gray-500 mt-1">Company vehicles, equipment, and tools</p>
+        <div className="space-y-1">
+          <h1 className="text-2xl font-bold tracking-tight">Fixed Assets</h1>
+          <p className="text-muted-foreground">Company vehicles, equipment, and tools</p>
         </div>
         <div className="flex gap-2">
           {isOwner && (
             <>
-              <button onClick={handleRecalculate} className="btn btn-secondary flex items-center gap-2">
-                <RefreshCw className="w-4 h-4" /> Recalculate Depreciation
-              </button>
-              <button onClick={() => setShowModal(true)} className="btn btn-primary flex items-center gap-2">
-                <Plus className="w-4 h-4" /> Add Asset
-              </button>
+              <Button variant="outline" onClick={handleRecalculate}>
+                <RefreshCw className="h-4 w-4" /> Recalculate
+              </Button>
+              <Button onClick={() => setShowModal(true)}>
+                <Plus className="h-4 w-4" /> Add Asset
+              </Button>
             </>
           )}
         </div>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-        <div className="card">
-          <span className="text-sm text-gray-500">Total Assets</span>
-          <p className="text-xl font-bold">{assets.length}</p>
-        </div>
-        <div className="card">
-          <span className="text-sm text-gray-500">Original Value</span>
-          <p className="text-xl font-bold">{formatCurrency(totalOriginal)}</p>
-        </div>
-        <div className="card">
-          <span className="text-sm text-gray-500">Current Value</span>
-          <p className="text-xl font-bold">{formatCurrency(totalCurrent)}</p>
-        </div>
-        <div className="card">
-          <span className="text-sm text-gray-500">Total Depreciated</span>
-          <p className="text-xl font-bold text-red-600">{formatCurrency(totalDepreciated)}</p>
-        </div>
+      {/* Summary Cards */}
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+        <Card>
+          <CardHeader className="pb-2">
+            <CardDescription>Total Assets</CardDescription>
+            <CardTitle className="text-2xl font-semibold tabular-nums">{assets.length}</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <Separator />
+            <div className="mt-2 flex items-center gap-1 text-xs text-muted-foreground">
+              <Truck className="h-3 w-3" /> Registered assets
+            </div>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardHeader className="pb-2">
+            <CardDescription>Original Value</CardDescription>
+            <CardTitle className="text-2xl font-semibold tabular-nums">{formatCurrency(totalOriginal)}</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <Separator />
+            <p className="mt-2 text-xs text-muted-foreground">At time of purchase</p>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardHeader className="pb-2">
+            <CardDescription>Current Value</CardDescription>
+            <CardTitle className="text-2xl font-semibold tabular-nums">{formatCurrency(totalCurrent)}</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <Separator />
+            <p className="mt-2 text-xs text-muted-foreground">After depreciation</p>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardHeader className="pb-2">
+            <CardDescription>Total Depreciated</CardDescription>
+            <CardTitle className="text-2xl font-semibold tabular-nums">{formatCurrency(totalDepreciated)}</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <Separator />
+            <div className="mt-2 flex items-center gap-1 text-xs text-muted-foreground">
+              <TrendingDown className="h-3 w-3" /> Accumulated depreciation
+            </div>
+          </CardContent>
+        </Card>
       </div>
 
+      {/* Assets Table */}
       {assets.length === 0 ? (
-        <div className="card text-center py-12">
-          <Truck className="w-12 h-12 text-gray-300 mx-auto mb-3" />
-          <h3 className="text-lg font-medium text-gray-500">No fixed assets recorded</h3>
-        </div>
+        <Card>
+          <CardContent className="flex flex-col items-center py-12">
+            <Truck className="mb-3 h-12 w-12 text-muted-foreground" />
+            <h3 className="font-medium">No fixed assets recorded</h3>
+            <p className="text-sm text-muted-foreground">Add vehicles, equipment, or tools</p>
+          </CardContent>
+        </Card>
       ) : (
-        <div className="card overflow-x-auto">
-          <table>
-            <thead>
-              <tr>
-                <th>Name</th>
-                <th>Category</th>
-                <th>Purchase Date</th>
-                <th>Purchase Price</th>
-                <th>Useful Life</th>
-                <th>Depreciated</th>
-                <th>Current Value</th>
-                <th></th>
-              </tr>
-            </thead>
-            <tbody>
-              {assets.map(asset => (
-                <tr key={asset.id}>
-                  <td className="font-medium">{asset.name}</td>
-                  <td>{asset.category}</td>
-                  <td>{formatDate(asset.purchaseDate)}</td>
-                  <td>{formatCurrency(asset.purchasePrice)}</td>
-                  <td>{asset.usefulLife} years</td>
-                  <td className="text-red-600">{formatCurrency(asset.accumulatedDepreciation)}</td>
-                  <td className="font-medium">{formatCurrency(asset.currentValue)}</td>
-                  <td>
-                    {isOwner && (
-                      <button onClick={() => handleDelete(asset.id)} className="text-red-500 hover:text-red-700">
-                        <Trash2 className="w-4 h-4" />
-                      </button>
-                    )}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+        <Card>
+          <CardContent className="p-0">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Name</TableHead>
+                  <TableHead>Category</TableHead>
+                  <TableHead>Purchase Date</TableHead>
+                  <TableHead className="text-right">Purchase Price</TableHead>
+                  <TableHead>Useful Life</TableHead>
+                  <TableHead className="text-right">Depreciated</TableHead>
+                  <TableHead className="text-right">Current Value</TableHead>
+                  <TableHead></TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {assets.map(asset => (
+                  <TableRow key={asset.id}>
+                    <TableCell className="font-medium">{asset.name}</TableCell>
+                    <TableCell>{asset.category}</TableCell>
+                    <TableCell className="whitespace-nowrap">{formatDate(asset.purchaseDate)}</TableCell>
+                    <TableCell className="text-right tabular-nums">{formatCurrency(asset.purchasePrice)}</TableCell>
+                    <TableCell>{asset.usefulLife} years</TableCell>
+                    <TableCell className="text-right text-destructive tabular-nums">{formatCurrency(asset.accumulatedDepreciation)}</TableCell>
+                    <TableCell className="text-right font-medium tabular-nums">{formatCurrency(asset.currentValue)}</TableCell>
+                    <TableCell>
+                      {isOwner && (
+                        <Button variant="ghost" size="icon" onClick={() => handleDelete(asset.id)} className="text-destructive hover:text-destructive">
+                          <Trash2 className="h-4 w-4" />
+                        </Button>
+                      )}
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </CardContent>
+        </Card>
       )}
 
-      {showModal && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-xl shadow-xl w-full max-w-md p-6">
-            <h2 className="text-lg font-bold mb-4">Add Fixed Asset</h2>
-            <form onSubmit={handleSubmit} className="space-y-4">
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Asset Name</label>
-                <input className="input" value={formData.name} onChange={e => setFormData({ ...formData, name: e.target.value })} required />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Category</label>
-                <select className="select" value={formData.category} onChange={e => setFormData({ ...formData, category: e.target.value })}>
-                  <option value="">Select category</option>
-                  <option value="Vehicle">Vehicle</option>
-                  <option value="Equipment">Equipment</option>
-                  <option value="Tools">Tools</option>
-                  <option value="Furniture">Furniture</option>
-                  <option value="Technology">Technology</option>
-                  <option value="Other">Other</option>
-                </select>
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Purchase Price ($)</label>
-                <input className="input" type="number" step="0.01" value={formData.purchasePrice} onChange={e => setFormData({ ...formData, purchasePrice: e.target.value })} required />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Purchase Date</label>
-                <input className="input" type="date" value={formData.purchaseDate} onChange={e => setFormData({ ...formData, purchaseDate: e.target.value })} required />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Useful Life (years)</label>
-                <input className="input" type="number" value={formData.usefulLife} onChange={e => setFormData({ ...formData, usefulLife: e.target.value })} required />
-              </div>
-              <div className="flex gap-3 justify-end">
-                <button type="button" onClick={() => setShowModal(false)} className="btn btn-secondary">Cancel</button>
-                <button type="submit" className="btn btn-primary">Add Asset</button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
+      <Dialog open={showModal} onOpenChange={setShowModal}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Add Fixed Asset</DialogTitle>
+          </DialogHeader>
+          <form onSubmit={handleSubmit} className="space-y-4">
+            <div className="space-y-2">
+              <Label htmlFor="name">Asset Name</Label>
+              <Input id="name" value={formData.name} onChange={e => setFormData({ ...formData, name: e.target.value })} required />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="category">Category</Label>
+              <Select value={formData.category || ''} onValueChange={value => setFormData({ ...formData, category: value ?? '' })}>
+                <SelectTrigger id="category"><SelectValue placeholder="Select category" /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="Vehicle">Vehicle</SelectItem>
+                  <SelectItem value="Equipment">Equipment</SelectItem>
+                  <SelectItem value="Tools">Tools</SelectItem>
+                  <SelectItem value="Furniture">Furniture</SelectItem>
+                  <SelectItem value="Technology">Technology</SelectItem>
+                  <SelectItem value="Other">Other</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="purchasePrice">Purchase Price ($)</Label>
+              <Input id="purchasePrice" type="number" step="0.01" value={formData.purchasePrice} onChange={e => setFormData({ ...formData, purchasePrice: e.target.value })} required />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="purchaseDate">Purchase Date</Label>
+              <Input id="purchaseDate" type="date" value={formData.purchaseDate} onChange={e => setFormData({ ...formData, purchaseDate: e.target.value })} required />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="usefulLife">Useful Life (years)</Label>
+              <Input id="usefulLife" type="number" value={formData.usefulLife} onChange={e => setFormData({ ...formData, usefulLife: e.target.value })} required />
+            </div>
+            <div className="flex justify-end gap-3">
+              <Button type="button" variant="secondary" onClick={() => setShowModal(false)}>Cancel</Button>
+              <Button type="submit">Add Asset</Button>
+            </div>
+          </form>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 };

@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
+import { createContext, useContext, useState, useEffect, type ReactNode } from 'react';
 import { api } from '../utils/api';
 
 interface User {
@@ -11,6 +11,7 @@ interface User {
 
 interface AuthContextType {
   user: User | null;
+  updateUser: (updated: User) => void;
   login: (email: string, password: string) => Promise<void>;
   logout: () => void;
   isLoading: boolean;
@@ -48,8 +49,12 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     setUser(null);
   };
 
+  const updateUser = (updated: User) => {
+    setUser(updated);
+  };
+
   return (
-    <AuthContext.Provider value={{ user, login, logout, isLoading }}>
+    <AuthContext.Provider value={{ user, updateUser, login, logout, isLoading }}>
       {children}
     </AuthContext.Provider>
   );

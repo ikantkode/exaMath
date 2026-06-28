@@ -1,9 +1,14 @@
-import React, { useEffect, useState, useRef, useCallback } from 'react';
+import { useEffect, useState, useRef, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { api, formatCurrency } from '../../utils/api';
 import { useAuth } from '../../context/AuthContext';
 import { Plus, X, Lock, Unlock, ChevronLeft, FileText, Download } from 'lucide-react';
 import * as XLSX from 'xlsx';
+import { Button } from '@/components/ui/button';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Badge } from '@/components/ui/badge';
+import { Separator } from '@/components/ui/separator';
+import { toast } from 'sonner';
 
 interface SovItem {
   id: string;
@@ -94,6 +99,7 @@ const SchedulesOfValue = () => {
         items: [{ itemNumber: 1, csiCode: '', csiCodeTitle: '', description: '', value: 0 }],
       });
       setSov(newSov);
+      toast.success('Schedule of Values created');
     } catch (err: any) {
       setError(err.message || 'Failed to create SOV');
     }
@@ -111,6 +117,7 @@ const SchedulesOfValue = () => {
         value: 0,
       });
       await refreshSov();
+      toast.success('Row added');
     } catch (err: any) {
       setError(err.message || 'Failed to add row');
     }
@@ -121,6 +128,7 @@ const SchedulesOfValue = () => {
     try {
       await api.delete(`/schedules-of-value/sov/${sov.id}/items/${itemId}`);
       await refreshSov();
+      toast.success('Row deleted');
     } catch (err: any) {
       setError(err.message || 'Failed to delete row');
     }
@@ -204,17 +212,29 @@ const SchedulesOfValue = () => {
         const fresh = await refreshSov();
         const newRow = fresh?.items.find(i => i.itemNumber === nextNum);
         if (newRow) {
+          const val = targetField === 'value' ? String(newRow.value) : String(newRow[targetField as keyof SovItem]);
+          setEditValue(val || '');
           setEditingCell({ rowId: newRow.id, field: targetField });
         } else {
           setEditingCell(null);
+          setEditValue('');
         }
       } catch (err: any) {
         setError(err.message || 'Failed to add row');
         setEditingCell(null);
+        setEditValue('');
       }
     } else {
-      await refreshSov();
-      setEditingCell({ rowId: targetRowId, field: targetField });
+      const fresh = await refreshSov();
+      const targetRow = fresh?.items.find(i => i.id === targetRowId);
+      if (targetRow) {
+        const val = targetField === 'value' ? String(targetRow.value) : String(targetRow[targetField as keyof SovItem]);
+        setEditValue(val || '');
+        setEditingCell({ rowId: targetRowId, field: targetField });
+      } else {
+        setEditingCell(null);
+        setEditValue('');
+      }
     }
   };
 
@@ -227,15 +247,12 @@ const SchedulesOfValue = () => {
     }
   };
 
-  const cancelEdit = () => {
-    setEditingCell(null);
-  };
-
   const submitSov = async () => {
     if (!sov) return;
     try {
       await api.post(`/schedules-of-value/sov/${sov.id}/submit`, {});
       await refreshSov();
+      toast.success('SOV submitted for approval');
     } catch (err: any) {
       setError(err.message || 'Failed to submit SOV');
     }
@@ -246,6 +263,7 @@ const SchedulesOfValue = () => {
     try {
       await api.post(`/schedules-of-value/sov/${sov.id}/approve`, {});
       await refreshSov();
+      toast.success('SOV approved and locked');
     } catch (err: any) {
       setError(err.message || 'Failed to approve SOV');
     }
@@ -256,6 +274,7 @@ const SchedulesOfValue = () => {
     try {
       await api.post(`/schedules-of-value/sov/${sov.id}/revert`, {});
       await refreshSov();
+      toast.success('SOV unlocked');
     } catch (err: any) {
       setError(err.message || 'Failed to revert SOV');
     }
@@ -278,6 +297,7 @@ const SchedulesOfValue = () => {
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, 'Schedule of Values');
     XLSX.writeFile(wb, `${project.name.replace(/[^a-zA-Z0-9_-]/g, '_')}_SOV.xlsx`);
+    toast.success('SOV exported to Excel');
   };
 
   const canEdit = user?.role === 'OWNER' || user?.role === 'MANAGER';
@@ -287,241 +307,266 @@ const SchedulesOfValue = () => {
   const isLocked = sov?.status === 'LOCKED';
 
   const statusBadge = (status: string) => {
-    const map: Record<string, string> = {
-      DRAFT: 'bg-gray-100 text-gray-700',
-      SUBMITTED: 'bg-blue-100 text-blue-700',
-      LOCKED: 'bg-red-100 text-red-700',
+    const variantMap: Record<string, 'default' | 'secondary' | 'destructive'> = {
+      DRAFT: 'secondary',
+      SUBMITTED: 'default',
+      LOCKED: 'destructive',
     };
     return (
-      <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${map[status] || 'bg-gray-100 text-gray-700'}`}>
+      <Badge variant={variantMap[status] || 'secondary'}>
         {status}
-      </span>
+      </Badge>
     );
   };
 
   const isEditing = (rowId: string, field: string) =>
     editingCell?.rowId === rowId && editingCell?.field === field;
 
-  if (loading) return <div className="flex items-center justify-center h-64">Loading...</div>;
-  if (error) return <div className="text-red-600 card p-6">Error: {error}</div>;
-  if (!project) return <div className="card text-center py-12">Project not found</div>;
+  if (loading) return (
+    <div className="flex items-center justify-center h-64">
+      <div className="h-6 w-6 animate-spin rounded-full border-2 border-primary border-t-transparent" />
+    </div>
+  );
+  if (error) return (
+    <Card className="border-destructive/50">
+      <CardContent className="py-6 text-center text-destructive">Error: {error}</CardContent>
+    </Card>
+  );
+  if (!project) return (
+    <Card>
+      <CardContent className="py-12 text-center">
+        <p className="text-muted-foreground">Project not found</p>
+      </CardContent>
+    </Card>
+  );
 
   return (
     <div className="space-y-6">
       {/* Header */}
       <div className="flex items-start justify-between">
-        <div>
-          <div className="flex items-center gap-3 mb-1">
-            <button onClick={() => navigate(`/projects/${projectId}`)} className="text-gray-400 hover:text-gray-600">
-              <ChevronLeft className="w-5 h-5" />
+        <div className="space-y-1">
+          <div className="flex items-center gap-3">
+            <button onClick={() => navigate(`/projects/${projectId}`)} className="text-muted-foreground hover:text-foreground">
+              <ChevronLeft className="h-5 w-5" />
             </button>
-            <h1 className="text-2xl font-bold text-gray-900">Schedule of Values</h1>
+            <h1 className="text-2xl font-bold tracking-tight">Schedule of Values</h1>
           </div>
-          <p className="text-gray-500 text-sm">
-            {project.name} {project.clientName && ` — ${project.clientName}`}
+          <p className="text-muted-foreground text-sm">
+            {project.name} {project.clientName && `— ${project.clientName}`}
           </p>
-          <div className="flex gap-3 mt-1 text-xs text-gray-400">
+          <div className="flex gap-2">
             {project.projectIdentificationIds.map(pid => (
-                <span key={pid} className="px-1.5 py-0.5 bg-gray-100 rounded text-gray-600">{pid}</span>
-              ))}
+              <Badge key={pid} variant="outline" className="text-xs font-mono">{pid}</Badge>
+            ))}
           </div>
         </div>
       </div>
 
       {/* SOV Status Banner */}
       {sov && (
-        <div className="flex items-center justify-between bg-gray-50 rounded-lg p-4">
-          <div className="flex items-center gap-3">
-            {statusBadge(sov.status)}
-            <span className="font-medium">{sov.name}</span>
-            <span className="text-sm text-gray-500">Total: {formatCurrency(sov.totalValue)}</span>
-          </div>
-          <div className="flex gap-2">
-            {isDraft && canEdit && (
-              <button onClick={submitSov} className="btn btn-primary text-sm">Submit for Approval</button>
-            )}
-            {isSubmitted && canEdit && (
-              <button onClick={approveSov} className="btn btn-primary text-sm">Approve & Lock</button>
-            )}
-            {isSubmitted && canEdit && (
-              <button onClick={revertSov} className="btn btn-secondary text-sm text-orange-600 hover:text-orange-800">Revert to Draft</button>
-            )}
-            {isLocked && isOwner && (
-              <button onClick={revertSov} className="btn btn-secondary text-sm flex items-center gap-1">
-                <Unlock className="w-3.5 h-3.5" /> Unlock
-              </button>
-            )}
-            {isLocked && (
-              <span className="flex items-center gap-1 text-sm text-red-600">
-                <Lock className="w-4 h-4" /> Locked
-              </span>
-            )}
-            {sov && (
-              <button onClick={exportToExcel} className="btn btn-secondary text-sm flex items-center gap-1">
-                <Download className="w-3.5 h-3.5" /> Export
-              </button>
-            )}
-          </div>
-        </div>
+        <Card>
+          <CardHeader className="pb-3">
+            <div className="flex items-center justify-between">
+              <div className="space-y-1">
+                <div className="flex items-center gap-3">
+                  {statusBadge(sov.status)}
+                  <CardTitle className="text-base">{sov.name}</CardTitle>
+                </div>
+                <CardDescription>Total: {formatCurrency(sov.totalValue)}</CardDescription>
+              </div>
+              <div className="flex gap-2">
+                {isDraft && canEdit && (
+                  <Button onClick={submitSov} size="sm">Submit</Button>
+                )}
+                {isSubmitted && (
+                  <>
+                    <Button onClick={approveSov} size="sm">Approve & Lock</Button>
+                    <Button onClick={revertSov} variant="secondary" size="sm">Revert to Draft</Button>
+                  </>
+                )}
+                {isLocked && isOwner && (
+                  <Button onClick={revertSov} variant="secondary" size="sm">
+                    <Unlock className="h-3.5 w-3.5" /> Unlock
+                  </Button>
+                )}
+                {isLocked && (
+                  <span className="flex items-center gap-1 text-sm text-muted-foreground">
+                    <Lock className="h-4 w-4" /> Locked
+                  </span>
+                )}
+                <Button onClick={exportToExcel} variant="outline" size="sm">
+                  <Download className="h-3.5 w-3.5" /> Export
+                </Button>
+              </div>
+            </div>
+          </CardHeader>
+        </Card>
       )}
 
       {/* SOV Table */}
       {sov && sov.items ? (
-        <div className="card overflow-x-auto">
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="border-b border-gray-200">
-                <th className="text-left py-2 px-2 w-12">#</th>
-                <th className="text-left py-2 px-2 w-28">CSI Code</th>
-                <th className="text-left py-2 px-2">CSI Title</th>
-                <th className="text-left py-2 px-2">Description</th>
-                <th className="text-right py-2 px-2 w-32">Value</th>
-                {isDraft && <th className="w-10"></th>}
-              </tr>
-            </thead>
-            <tbody>
-              {sov.items.map((item) => (
-                <tr key={item.id} className="border-b border-gray-100 hover:bg-gray-50">
-                  <td className="py-1.5 px-2 text-gray-400 font-mono text-xs">{item.itemNumber}</td>
-
-                  {/* CSI Code */}
-                  <td className="py-1.5 px-2">
-                    {isEditing(item.id, 'csiCode') ? (
-                      <input
-                        ref={cellInputRef}
-                        className="w-full px-1.5 py-0.5 text-sm border border-blue-400 rounded focus:outline-none focus:ring-2 focus:ring-blue-300"
-                        value={editValue}
-                        onChange={e => setEditValue(e.target.value)}
-                        onBlur={commitEdit}
-                        onKeyDown={handleKeyDown}
-                      />
-                    ) : (
-                      <span
-                        onDoubleClick={() => isDraft && canEdit && startEdit(item, 'csiCode')}
-                        className={`block px-1.5 py-0.5 rounded min-h-[28px] ${
-                          isDraft && canEdit ? 'cursor-text hover:bg-blue-50' : ''
-                        }`}
-                      >
-                        {item.csiCode || <span className="text-gray-300">—</span>}
-                      </span>
-                    )}
-                  </td>
-
-                  {/* CSI Title */}
-                  <td className="py-1.5 px-2">
-                    {isEditing(item.id, 'csiCodeTitle') ? (
-                      <input
-                        ref={cellInputRef}
-                        className="w-full px-1.5 py-0.5 text-sm border border-blue-400 rounded focus:outline-none focus:ring-2 focus:ring-blue-300"
-                        value={editValue}
-                        onChange={e => setEditValue(e.target.value)}
-                        onBlur={commitEdit}
-                        onKeyDown={handleKeyDown}
-                      />
-                    ) : (
-                      <span
-                        onDoubleClick={() => isDraft && canEdit && startEdit(item, 'csiCodeTitle')}
-                        className={`block px-1.5 py-0.5 rounded min-h-[28px] ${
-                          isDraft && canEdit ? 'cursor-text hover:bg-blue-50' : ''
-                        }`}
-                      >
-                        {item.csiCodeTitle || <span className="text-gray-300">—</span>}
-                      </span>
-                    )}
-                  </td>
-
-                  {/* Description */}
-                  <td className="py-1.5 px-2">
-                    {isEditing(item.id, 'description') ? (
-                      <input
-                        ref={cellInputRef}
-                        className="w-full px-1.5 py-0.5 text-sm border border-blue-400 rounded focus:outline-none focus:ring-2 focus:ring-blue-300"
-                        value={editValue}
-                        onChange={e => setEditValue(e.target.value)}
-                        onBlur={commitEdit}
-                        onKeyDown={handleKeyDown}
-                      />
-                    ) : (
-                      <span
-                        onDoubleClick={() => isDraft && canEdit && startEdit(item, 'description')}
-                        className={`block px-1.5 py-0.5 rounded min-h-[28px] ${
-                          isDraft && canEdit ? 'cursor-text hover:bg-blue-50' : ''
-                        }`}
-                      >
-                        {item.description || <span className="text-gray-300">—</span>}
-                      </span>
-                    )}
-                  </td>
-
-                  {/* Value */}
-                  <td className="py-1.5 px-2 text-right">
-                    {isEditing(item.id, 'value') ? (
-                      <input
-                        ref={cellInputRef}
-                        type="number"
-                        step="0.01"
-                        className="w-full px-1.5 py-0.5 text-sm text-right border border-blue-400 rounded focus:outline-none focus:ring-2 focus:ring-blue-300"
-                        value={editValue}
-                        onChange={e => setEditValue(e.target.value)}
-                        onBlur={commitEdit}
-                        onKeyDown={handleKeyDown}
-                      />
-                    ) : (
-                      <span
-                        onDoubleClick={() => isDraft && canEdit && startEdit(item, 'value')}
-                        className={`block px-1.5 py-0.5 rounded min-h-[28px] ${
-                          isDraft && canEdit ? 'cursor-text hover:bg-blue-50' : ''
-                        }`}
-                      >
-                        {formatCurrency(item.value)}
-                      </span>
-                    )}
-                  </td>
-
-                  {/* Delete */}
-                  {isDraft && (
-                    <td className="py-1.5 px-2 text-center">
-                      <button
-                        onClick={() => deleteRow(item.id)}
-                        className="text-gray-300 hover:text-red-500 transition-colors"
-                        title="Delete row"
-                      >
-                        <X className="w-4 h-4" />
-                      </button>
-                    </td>
-                  )}
+        <Card>
+          <CardContent className="p-0">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b border-border bg-muted/50">
+                  <th className="py-2.5 px-3 text-left font-medium text-muted-foreground w-12">#</th>
+                  <th className="py-2.5 px-3 text-left font-medium text-muted-foreground w-28">CSI Code</th>
+                  <th className="py-2.5 px-3 text-left font-medium text-muted-foreground">CSI Title</th>
+                  <th className="py-2.5 px-3 text-left font-medium text-muted-foreground">Description</th>
+                  <th className="py-2.5 px-3 text-right font-medium text-muted-foreground w-32">Value</th>
+                  {isDraft && <th className="w-10"></th>}
                 </tr>
-              ))}
-            </tbody>
-            <tfoot>
-              <tr className="bg-gray-50 font-bold">
-                <td colSpan={4} className="py-2 px-2 text-right">Total Value</td>
-                <td className="py-2 px-2 text-right">{formatCurrency(sov.totalValue)}</td>
-                {isDraft && <td></td>}
-              </tr>
-            </tfoot>
-          </table>
+              </thead>
+              <tbody>
+                {sov.items.map((item) => (
+                  <tr key={item.id} className="border-b border-border/50 hover:bg-muted/50">
+                    <td className="py-1.5 px-3 text-muted-foreground font-mono text-xs">{item.itemNumber}</td>
 
-          {isDraft && (
-            <button onClick={addRow} className="mt-3 text-sm text-blue-600 hover:text-blue-800 flex items-center gap-1">
-              <Plus className="w-4 h-4" /> Add row
-            </button>
-          )}
-        </div>
+                    {/* CSI Code */}
+                    <td className="py-1.5 px-3">
+                      {isEditing(item.id, 'csiCode') ? (
+                        <input
+                          ref={cellInputRef}
+                          className="w-full px-1.5 py-0.5 text-sm border border-primary rounded focus:outline-none focus:ring-2 focus:ring-ring"
+                          value={editValue}
+                          onChange={e => setEditValue(e.target.value)}
+                          onBlur={commitEdit}
+                          onKeyDown={handleKeyDown}
+                        />
+                      ) : (
+                        <span
+                          onDoubleClick={() => isDraft && canEdit && startEdit(item, 'csiCode')}
+                          className={`block px-1.5 py-0.5 rounded min-h-[28px] ${
+                            isDraft && canEdit ? 'cursor-text hover:bg-muted' : ''
+                          }`}
+                        >
+                          {item.csiCode || <span className="text-muted-foreground">—</span>}
+                        </span>
+                      )}
+                    </td>
+
+                    {/* CSI Title */}
+                    <td className="py-1.5 px-3">
+                      {isEditing(item.id, 'csiCodeTitle') ? (
+                        <input
+                          ref={cellInputRef}
+                          className="w-full px-1.5 py-0.5 text-sm border border-primary rounded focus:outline-none focus:ring-2 focus:ring-ring"
+                          value={editValue}
+                          onChange={e => setEditValue(e.target.value)}
+                          onBlur={commitEdit}
+                          onKeyDown={handleKeyDown}
+                        />
+                      ) : (
+                        <span
+                          onDoubleClick={() => isDraft && canEdit && startEdit(item, 'csiCodeTitle')}
+                          className={`block px-1.5 py-0.5 rounded min-h-[28px] ${
+                            isDraft && canEdit ? 'cursor-text hover:bg-muted' : ''
+                          }`}
+                        >
+                          {item.csiCodeTitle || <span className="text-muted-foreground">—</span>}
+                        </span>
+                      )}
+                    </td>
+
+                    {/* Description */}
+                    <td className="py-1.5 px-3">
+                      {isEditing(item.id, 'description') ? (
+                        <input
+                          ref={cellInputRef}
+                          className="w-full px-1.5 py-0.5 text-sm border border-primary rounded focus:outline-none focus:ring-2 focus:ring-ring"
+                          value={editValue}
+                          onChange={e => setEditValue(e.target.value)}
+                          onBlur={commitEdit}
+                          onKeyDown={handleKeyDown}
+                        />
+                      ) : (
+                        <span
+                          onDoubleClick={() => isDraft && canEdit && startEdit(item, 'description')}
+                          className={`block px-1.5 py-0.5 rounded min-h-[28px] ${
+                            isDraft && canEdit ? 'cursor-text hover:bg-muted' : ''
+                          }`}
+                        >
+                          {item.description || <span className="text-muted-foreground">—</span>}
+                        </span>
+                      )}
+                    </td>
+
+                    {/* Value */}
+                    <td className="py-1.5 px-3 text-right">
+                      {isEditing(item.id, 'value') ? (
+                        <input
+                          ref={cellInputRef}
+                          type="number"
+                          step="0.01"
+                          className="w-full px-1.5 py-0.5 text-sm text-right border border-primary rounded focus:outline-none focus:ring-2 focus:ring-ring"
+                          value={editValue}
+                          onChange={e => setEditValue(e.target.value)}
+                          onBlur={commitEdit}
+                          onKeyDown={handleKeyDown}
+                        />
+                      ) : (
+                        <span
+                          onDoubleClick={() => isDraft && canEdit && startEdit(item, 'value')}
+                          className={`block px-1.5 py-0.5 rounded min-h-[28px] tabular-nums ${
+                            isDraft && canEdit ? 'cursor-text hover:bg-muted' : ''
+                          }`}
+                        >
+                          {formatCurrency(item.value)}
+                        </span>
+                      )}
+                    </td>
+
+                    {/* Delete */}
+                    {isDraft && (
+                      <td className="py-1.5 px-3 text-center">
+                        <button
+                          onClick={() => deleteRow(item.id)}
+                          className="text-muted-foreground hover:text-destructive transition-colors"
+                          title="Delete row"
+                        >
+                          <X className="h-4 w-4" />
+                        </button>
+                      </td>
+                    )}
+                  </tr>
+                ))}
+              </tbody>
+              <tfoot>
+                <tr className="bg-muted/50 font-bold">
+                  <td colSpan={4} className="py-2.5 px-3 text-right">Total Value</td>
+                  <td className="py-2.5 px-3 text-right tabular-nums">{formatCurrency(sov.totalValue)}</td>
+                  {isDraft && <td></td>}
+                </tr>
+              </tfoot>
+            </table>
+
+            {isDraft && (
+              <div className="p-3">
+                <Button onClick={addRow} variant="ghost" size="sm" className="text-muted-foreground hover:text-foreground">
+                  <Plus className="h-4 w-4" /> Add row
+                </Button>
+              </div>
+            )}
+          </CardContent>
+        </Card>
       ) : (
-        <div className="card text-center py-12">
-          <FileText className="w-12 h-12 text-gray-300 mx-auto mb-3" />
-          <h3 className="text-lg font-medium text-gray-500">No Schedule of Values yet</h3>
-          <p className="text-gray-400 text-sm mt-1 mb-4">Create one to start building your SOV</p>
-          {canEdit && (
-            <button onClick={createSov} className="btn btn-primary">Create Schedule of Values</button>
-          )}
-        </div>
+        <Card>
+          <CardContent className="flex flex-col items-center py-12">
+            <FileText className="mb-3 h-12 w-12 text-muted-foreground" />
+            <h3 className="font-medium">No Schedule of Values yet</h3>
+            <p className="text-sm text-muted-foreground">Create one to start building your SOV</p>
+            <Separator className="my-4 w-32" />
+            {canEdit && (
+              <Button onClick={createSov}>Create Schedule of Values</Button>
+            )}
+          </CardContent>
+        </Card>
       )}
 
       {/* Inline edit help */}
       {isDraft && canEdit && (
-        <p className="text-xs text-gray-400">Double-click any cell to edit. Press Enter or Tab to move to the next field. Press Escape to cancel.</p>
+        <p className="text-xs text-muted-foreground">Double-click any cell to edit. Press Enter or Tab to move to the next field. Press Escape to cancel.</p>
       )}
     </div>
   );

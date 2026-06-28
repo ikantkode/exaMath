@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Routes, Route, Navigate } from 'react-router-dom';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import { api } from './utils/api';
@@ -15,6 +15,11 @@ import OfficePayroll from './pages/accounting/OfficePayroll';
 import FixedAssets from './pages/accounting/FixedAssets';
 import Payouts from './pages/accounting/Payouts';
 import AuditLogs from './pages/users/AuditLogs';
+import Settings from './pages/settings/Settings';
+import Team from './pages/team/Team';
+import Employees from './pages/employees/Employees';
+import FieldWorkers from './pages/fieldWorkers/FieldWorkers';
+import { Toaster } from './components/ui/toast';
 
 const ProtectedRoute = ({ children, roles }: { children: React.ReactNode; roles?: string[] }) => {
   const { user, isLoading } = useAuth();
@@ -31,7 +36,7 @@ const AppInitializer = ({ children }: { children: React.ReactNode }) => {
   useEffect(() => {
     api.get<{ needsSetup: boolean }>('/auth/setup-status')
       .then(d => setNeedsSetup(d.needsSetup))
-      .catch(() => setNeedsSetup(false));
+      .catch(() => setNeedsSetup(true));
   }, []);
 
   if (needsSetup === null) return <div className="flex items-center justify-center h-screen">Loading...</div>;
@@ -60,16 +65,27 @@ const AppRoutes = () => (
       <Route path="projects/:id/timesheets" element={<Timesheets />} />
       <Route path="projects/:projectId/sov" element={<SchedulesOfValue />} />
       <Route path="accounting/office-payroll" element={<OfficePayroll />} />
-      <Route path="accounting/fixed-assets" element={<FixedAssets />} />
-      <Route path="accounting/payouts" element={<Payouts />} />
-      <Route
-        path="audit-logs"
-        element={
-          <ProtectedRoute roles={['OWNER']}>
-            <AuditLogs />
-          </ProtectedRoute>
-        }
-      />
+       <Route path="accounting/fixed-assets" element={<FixedAssets />} />
+       <Route path="accounting/payouts" element={<Payouts />} />
+       <Route path="employees" element={<Employees />} />
+       <Route path="projects/:id/field-workers" element={<FieldWorkers />} />
+       <Route
+          path="audit-logs"
+          element={
+            <ProtectedRoute roles={['OWNER']}>
+              <AuditLogs />
+            </ProtectedRoute>
+          }
+        />
+        <Route path="settings" element={<Settings />} />
+        <Route
+          path="team"
+          element={
+            <ProtectedRoute roles={['OWNER']}>
+              <Team />
+            </ProtectedRoute>
+          }
+        />
     </Route>
     <Route path="*" element={<Navigate to="/login" replace />} />
   </Routes>
@@ -79,6 +95,7 @@ const App = () => (
   <AppInitializer>
     <AuthProvider>
       <AppRoutes />
+      <Toaster />
     </AuthProvider>
   </AppInitializer>
 );

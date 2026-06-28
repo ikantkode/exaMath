@@ -33,6 +33,17 @@ enum SovStatus {
   LOCKED
 }
 
+enum WageType {
+  UNION
+  PREVAILING
+  PRIVATE
+}
+
+enum CompensationType {
+  W2
+  INDEPENDENT_CONTRACTOR
+}
+
 model User {
   id            String    @id @default(uuid())
   name          String
@@ -59,6 +70,7 @@ model Project {
   endDate               DateTime?
   description           String?
   projectIdentificationIds String[]   @default([])
+  wageType              WageType?
   createdAt             DateTime      @default(now())
   updatedAt             DateTime      @updatedAt
   budgetCategories      BudgetCategory[]
@@ -66,6 +78,7 @@ model Project {
   timesheets            Timesheet[]
   schedulesOfValue      ScheduleOfValue[]
   changeOrders          ChangeOrder[]
+  fieldWorkerAssignments FieldWorkerAssignment[]
 }
 
 model BudgetCategory {
@@ -149,17 +162,87 @@ model ChangeOrder {
   updatedAt       DateTime    @updatedAt
 }
 
+// Office employees (master record)
+model Employee {
+  id                  String            @id @default(uuid())
+  name                String
+  address             String?
+  phone               String?
+  email               String?
+  position            String?
+  compensationType    CompensationType
+  salary              Float
+  bonus               Float             @default(0)
+  deductions          Float             @default(0)
+  taxes               Float             @default(0)
+  isUnion             Boolean           @default(false)
+  createdAt           DateTime          @default(now())
+  updatedAt           DateTime          @updatedAt
+  payrollRecords      OfficePayroll[]
+}
+
+// Office payroll records (per period)
 model OfficePayroll {
   id          String   @id @default(uuid())
-  employeeName String
-  position    String
+  employeeId  String
+  employee    Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
   grossPay    Float
-  taxes       Float
-  insurance   Float
+  wages       Float
+  benefits    Float   @default(0)
+  taxes       Float   @default(0)
+  deductions  Float   @default(0)
   netPay      Float
   periodStart DateTime
   periodEnd   DateTime
+  paid        Boolean @default(false)
   createdAt   DateTime @default(now())
+}
+
+// Field worker master record
+model FieldWorker {
+  id                 String            @id @default(uuid())
+  name               String
+  address            String?
+  phone              String?
+  email              String?
+  compensationType   CompensationType
+  isUnion            Boolean           @default(false)
+  createdAt          DateTime          @default(now())
+  updatedAt          DateTime          @updatedAt
+  assignments        FieldWorkerAssignment[]
+}
+
+// Field worker assigned to a project with wage/benefit rates
+model FieldWorkerAssignment {
+  id               String        @id @default(uuid())
+  fieldWorkerId    String
+  fieldWorker      FieldWorker   @relation(fields: [fieldWorkerId], references: [id], onDelete: Cascade)
+  projectId        String
+  project          Project       @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  wageRate         Float         @default(0)
+  benefitRate      Float         @default(0)
+  createdAt        DateTime      @default(now())
+  updatedAt        DateTime      @updatedAt
+  payrollEntries   FieldWorkerPayroll[]
+
+  @@unique([fieldWorkerId, projectId])
+}
+
+// Field worker payroll per period
+model FieldWorkerPayroll {
+  id               String      @id @default(uuid())
+  assignmentId     String
+  assignment       FieldWorkerAssignment @relation(fields: [assignmentId], references: [id], onDelete: Cascade)
+  hoursWorked      Float
+  grossWages       Float
+  grossBenefits    Float       @default(0)
+  taxes            Float       @default(0)
+  deductions       Float       @default(0)
+  netPay           Float
+  periodStart      DateTime
+  periodEnd        DateTime
+  paid             Boolean     @default(false)
+  createdAt        DateTime    @default(now())
 }
 
 model FixedAsset {

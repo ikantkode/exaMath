@@ -1,8 +1,16 @@
-import React, { useEffect, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { api, formatCurrency, formatDate } from '../../utils/api';
 import { useAuth } from '../../context/AuthContext';
-import { ArrowLeft, Plus, Trash2 } from 'lucide-react';
+import { ArrowLeft, Plus, Trash2, Clock, DollarSign, FileClock } from 'lucide-react';
+import { Button } from '@/components/ui/button';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
+import { Separator } from '@/components/ui/separator';
+import { toast } from 'sonner';
 
 interface Timesheet {
   id: string;
@@ -39,113 +47,153 @@ const Timesheets = () => {
     setShowModal(false);
     setFormData({ hours: '', rate: '', date: new Date().toISOString().split('T')[0] });
     fetchTimesheets();
+    toast.success('Hours logged');
   };
 
   const handleDelete = async (tsId: string) => {
     if (!confirm('Delete this timesheet entry?')) return;
     await api.delete(`/timesheets/${tsId}`);
     fetchTimesheets();
+    toast.success('Entry deleted');
   };
 
   const canDelete = user?.role === 'OWNER';
   const totalHours = timesheets.reduce((sum, t) => sum + t.hours, 0);
   const totalCost = timesheets.reduce((sum, t) => sum + t.hours * t.rate, 0);
 
-  if (loading) return <div className="flex items-center justify-center h-64">Loading timesheets...</div>;
+  if (loading) return (
+    <div className="flex items-center justify-center h-64">
+      <div className="h-6 w-6 animate-spin rounded-full border-2 border-primary border-t-transparent" />
+    </div>
+  );
 
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-4">
-          <Link to={`/projects/${id}`} className="inline-flex items-center gap-2 text-gray-500 hover:text-gray-700">
-            <ArrowLeft className="w-4 h-4" /> Back
+          <Link to={`/projects/${id}`} className="inline-flex items-center gap-2 text-muted-foreground hover:text-foreground">
+            <ArrowLeft className="h-4 w-4" /> Back
           </Link>
-          <h1 className="text-xl font-bold">Timesheets</h1>
-        </div>
-        <button onClick={() => setShowModal(true)} className="btn btn-primary flex items-center gap-2">
-          <Plus className="w-4 h-4" /> Log Hours
-        </button>
-      </div>
-
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-        <div className="card">
-          <span className="text-sm text-gray-500">Total Hours</span>
-          <p className="text-xl font-bold">{totalHours.toFixed(1)} hrs</p>
-        </div>
-        <div className="card">
-          <span className="text-sm text-gray-500">Total Labor Cost</span>
-          <p className="text-xl font-bold">{formatCurrency(totalCost)}</p>
-        </div>
-        <div className="card">
-          <span className="text-sm text-gray-500">Entries</span>
-          <p className="text-xl font-bold">{timesheets.length}</p>
-        </div>
-      </div>
-
-      {timesheets.length === 0 ? (
-        <div className="card text-center py-12">
-          <p className="text-gray-400">No timesheet entries for this project</p>
-        </div>
-      ) : (
-        <div className="card overflow-x-auto">
-          <table>
-            <thead>
-              <tr>
-                <th>Date</th>
-                <th>Employee</th>
-                <th>Hours</th>
-                <th>Rate</th>
-                <th>Total</th>
-                <th></th>
-              </tr>
-            </thead>
-            <tbody>
-              {timesheets.map(ts => (
-                <tr key={ts.id}>
-                  <td>{formatDate(ts.date)}</td>
-                  <td>{ts.user.name}</td>
-                  <td>{ts.hours}</td>
-                  <td>{formatCurrency(ts.rate)}</td>
-                  <td className="font-medium">{formatCurrency(ts.hours * ts.rate)}</td>
-                  <td>
-                    {canDelete && (
-                      <button onClick={() => handleDelete(ts.id)} className="text-red-500 hover:text-red-700">
-                        <Trash2 className="w-4 h-4" />
-                      </button>
-                    )}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      )}
-
-      {showModal && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-xl shadow-xl w-full max-w-md p-6">
-            <h2 className="text-lg font-bold mb-4">Log Hours</h2>
-            <form onSubmit={handleSubmit} className="space-y-4">
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Hours</label>
-                <input className="input" type="number" step="0.5" value={formData.hours} onChange={e => setFormData({ ...formData, hours: e.target.value })} required />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Hourly Rate ($)</label>
-                <input className="input" type="number" step="0.01" value={formData.rate} onChange={e => setFormData({ ...formData, rate: e.target.value })} required />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Date</label>
-                <input className="input" type="date" value={formData.date} onChange={e => setFormData({ ...formData, date: e.target.value })} required />
-              </div>
-              <div className="flex gap-3 justify-end">
-                <button type="button" onClick={() => setShowModal(false)} className="btn btn-secondary">Cancel</button>
-                <button type="submit" className="btn btn-primary">Log Hours</button>
-              </div>
-            </form>
+          <div className="space-y-1">
+            <h1 className="text-2xl font-bold tracking-tight">Timesheets</h1>
+            <p className="text-muted-foreground">Track labor hours for this project</p>
           </div>
         </div>
+        <Button onClick={() => setShowModal(true)}>
+          <Plus className="h-4 w-4" /> Log Hours
+        </Button>
+      </div>
+
+      {/* Summary Cards */}
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+        <Card>
+          <CardHeader className="pb-2">
+            <CardDescription>Total Hours</CardDescription>
+            <CardTitle className="text-2xl font-semibold tabular-nums">{totalHours.toFixed(1)} hrs</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <Separator />
+            <div className="mt-2 flex items-center gap-1 text-xs text-muted-foreground">
+              <Clock className="h-3 w-3" /> Cumulative hours logged
+            </div>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardHeader className="pb-2">
+            <CardDescription>Total Labor Cost</CardDescription>
+            <CardTitle className="text-2xl font-semibold tabular-nums">{formatCurrency(totalCost)}</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <Separator />
+            <div className="mt-2 flex items-center gap-1 text-xs text-muted-foreground">
+              <DollarSign className="h-3 w-3" /> Based on hourly rates
+            </div>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardHeader className="pb-2">
+            <CardDescription>Entries</CardDescription>
+            <CardTitle className="text-2xl font-semibold tabular-nums">{timesheets.length}</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <Separator />
+            <div className="mt-2 flex items-center gap-1 text-xs text-muted-foreground">
+              <FileClock className="h-3 w-3" /> Total time entries
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+
+      {/* Timesheets Table */}
+      {timesheets.length === 0 ? (
+        <Card>
+          <CardContent className="flex flex-col items-center py-12">
+            <FileClock className="mb-3 h-12 w-12 text-muted-foreground" />
+            <p className="text-muted-foreground">No timesheet entries for this project</p>
+          </CardContent>
+        </Card>
+      ) : (
+        <Card>
+          <CardContent className="p-0">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Date</TableHead>
+                  <TableHead>Employee</TableHead>
+                  <TableHead className="text-right">Hours</TableHead>
+                  <TableHead className="text-right">Rate</TableHead>
+                  <TableHead className="text-right">Total</TableHead>
+                  <TableHead></TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {timesheets.map(ts => (
+                  <TableRow key={ts.id}>
+                    <TableCell className="whitespace-nowrap">{formatDate(ts.date)}</TableCell>
+                    <TableCell>{ts.user.name}</TableCell>
+                    <TableCell className="text-right tabular-nums">{ts.hours}</TableCell>
+                    <TableCell className="text-right tabular-nums">{formatCurrency(ts.rate)}</TableCell>
+                    <TableCell className="text-right font-medium tabular-nums">{formatCurrency(ts.hours * ts.rate)}</TableCell>
+                    <TableCell>
+                      {canDelete && (
+                        <Button variant="ghost" size="icon" onClick={() => handleDelete(ts.id)} className="text-destructive hover:text-destructive">
+                          <Trash2 className="h-4 w-4" />
+                        </Button>
+                      )}
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </CardContent>
+        </Card>
       )}
+
+      <Dialog open={showModal} onOpenChange={setShowModal}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Log Hours</DialogTitle>
+          </DialogHeader>
+          <form onSubmit={handleSubmit} className="space-y-4">
+            <div className="space-y-2">
+              <Label htmlFor="hours">Hours</Label>
+              <Input id="hours" type="number" step="0.5" value={formData.hours} onChange={e => setFormData({ ...formData, hours: e.target.value })} required />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="rate">Hourly Rate ($)</Label>
+              <Input id="rate" type="number" step="0.01" value={formData.rate} onChange={e => setFormData({ ...formData, rate: e.target.value })} required />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="date">Date</Label>
+              <Input id="date" type="date" value={formData.date} onChange={e => setFormData({ ...formData, date: e.target.value })} required />
+            </div>
+            <div className="flex justify-end gap-3">
+              <Button type="button" variant="secondary" onClick={() => setShowModal(false)}>Cancel</Button>
+              <Button type="submit">Log Hours</Button>
+            </div>
+          </form>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 };

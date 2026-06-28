@@ -94,19 +94,59 @@ router.post('/login', async (req, res) => {
 
 // Get current user
 router.get('/me', authenticate, async (req: AuthRequest, res) => {
+   try {
+     const user = await prisma.user.findUnique({ where: { id: req.user!.id } });
+     if (!user) return res.status(404).json({ error: 'User not found' });
+
+     res.json({
+       id: user.id,
+       name: user.name,
+       email: user.email,
+       role: user.role,
+       assignedProjectIds: user.assignedProjectIds,
+     });
+   } catch (error) {
+     res.status(500).json({ error: 'Failed to get user' });
+   }
+});
+
+// Update current user settings
+router.put('/me', authenticate, async (req: AuthRequest, res) => {
   try {
+    const { name, email, currentPassword, newPassword } = req.body;
+
     const user = await prisma.user.findUnique({ where: { id: req.user!.id } });
     if (!user) return res.status(404).json({ error: 'User not found' });
 
+    if (email && email !== user.email) {
+      const existing = await prisma.user.findUnique({ where: { email } });
+      if (existing) return res.status(409).json({ error: 'Email already in use' });
+    }
+
+    if (newPassword) {
+      const valid = await bcrypt.compare(currentPassword, user.password);
+      if (!valid) return res.status(401).json({ error: 'Current password is incorrect' });
+    }
+
+    const data: any = {};
+    if (name) data.name = name;
+    if (email) data.email = email;
+    if (newPassword) data.password = await bcrypt.hash(newPassword, 10);
+
+    const updated = await prisma.user.update({
+      where: { id: req.user!.id },
+      data,
+    });
+
     res.json({
-      id: user.id,
-      name: user.name,
-      email: user.email,
-      role: user.role,
-      assignedProjectIds: user.assignedProjectIds,
+      id: updated.id,
+      name: updated.name,
+      email: updated.email,
+      role: updated.role,
+      assignedProjectIds: updated.assignedProjectIds,
     });
   } catch (error) {
-    res.status(500).json({ error: 'Failed to get user' });
+    res.status(500).json({ error: 'Failed to update user' });
   }
 });
 

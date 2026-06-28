@@ -1,6 +1,10 @@
-import React, { useEffect, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { api, formatDate } from '../../utils/api';
-import { Shield } from 'lucide-react';
+import { Shield, ClipboardList, AlertTriangle } from 'lucide-react';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
+import { Badge } from '@/components/ui/badge';
+import { Separator } from '@/components/ui/separator';
 
 interface AuditLog {
   id: string;
@@ -21,65 +25,119 @@ const AuditLogs = () => {
     api.get<AuditLog[]>('/audit-logs/').then(setLogs).finally(() => setLoading(false));
   }, []);
 
-  const actionColors: Record<string, string> = {
-    CREATE: 'badge-green',
-    UPDATE: 'badge-blue',
-    DELETE: 'badge-red',
-    APPROVE: 'badge-green',
-    REJECT: 'badge-yellow',
-    RECALCULATE: 'badge-blue',
+  const actionVariants: Record<string, 'default' | 'secondary' | 'destructive' | 'outline'> = {
+    CREATE: 'default',
+    UPDATE: 'secondary',
+    DELETE: 'destructive',
+    APPROVE: 'default',
+    REJECT: 'outline',
+    RECALCULATE: 'secondary',
   };
 
-  if (loading) return <div className="flex items-center justify-center h-64">Loading audit logs...</div>;
+  if (loading) return (
+    <div className="flex items-center justify-center h-64">
+      <div className="h-6 w-6 animate-spin rounded-full border-2 border-primary border-t-transparent" />
+    </div>
+  );
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-2xl font-bold text-gray-900">Audit Log</h1>
-        <p className="text-gray-500 mt-1">Permanent record of all changes to financial data</p>
+      <div className="space-y-1">
+        <h1 className="text-2xl font-bold tracking-tight">Audit Log</h1>
+        <p className="text-muted-foreground">Permanent record of all changes to financial data</p>
       </div>
 
+      {/* Summary */}
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+        <Card>
+          <CardHeader className="pb-2">
+            <CardDescription>Total Entries</CardDescription>
+            <CardTitle className="text-2xl font-semibold tabular-nums">{logs.length}</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <Separator />
+            <div className="mt-2 flex items-center gap-1 text-xs text-muted-foreground">
+              <ClipboardList className="h-3 w-3" /> All audit actions
+            </div>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardHeader className="pb-2">
+            <CardDescription>Creates</CardDescription>
+            <CardTitle className="text-2xl font-semibold tabular-nums">
+              {logs.filter(l => l.action === 'CREATE').length}
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <Separator />
+            <div className="mt-2 flex items-center gap-1 text-xs text-muted-foreground">
+              <Shield className="h-3 w-3" /> New records
+            </div>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardHeader className="pb-2">
+            <CardDescription>Deletes</CardDescription>
+            <CardTitle className="text-2xl font-semibold tabular-nums">
+              {logs.filter(l => l.action === 'DELETE').length}
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <Separator />
+            <div className="mt-2 flex items-center gap-1 text-xs text-muted-foreground">
+              <AlertTriangle className="h-3 w-3" /> Removed records
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+
+      {/* Audit Logs Table */}
       {logs.length === 0 ? (
-        <div className="card text-center py-12">
-          <Shield className="w-12 h-12 text-gray-300 mx-auto mb-3" />
-          <h3 className="text-lg font-medium text-gray-500">No audit entries yet</h3>
-        </div>
+        <Card>
+          <CardContent className="flex flex-col items-center py-12">
+            <Shield className="mb-3 h-12 w-12 text-muted-foreground" />
+            <h3 className="font-medium">No audit entries yet</h3>
+            <p className="text-sm text-muted-foreground">Actions will be logged here</p>
+          </CardContent>
+        </Card>
       ) : (
-        <div className="card overflow-x-auto">
-          <table>
-            <thead>
-              <tr>
-                <th>Timestamp</th>
-                <th>User</th>
-                <th>Action</th>
-                <th>Entity</th>
-                <th>Details</th>
-              </tr>
-            </thead>
-            <tbody>
-              {logs.map(log => (
-                <tr key={log.id}>
-                  <td className="whitespace-nowrap">{formatDate(log.timestamp)}</td>
-                  <td>
-                    <div>
-                      <p className="font-medium">{log.user.name}</p>
-                      <p className="text-xs text-gray-400">{log.user.email}</p>
-                    </div>
-                  </td>
-                  <td><span className={`badge ${actionColors[log.action] || 'badge-gray'}`}>{log.action}</span></td>
-                  <td>{log.entity}</td>
-                  <td className="max-w-xs text-xs text-gray-500">
-                    {log.newValue ? (
-                      <span className="truncate block">{log.newValue.substring(0, 100)}{log.newValue.length > 100 ? '...' : ''}</span>
-                    ) : log.oldValue ? (
-                      <span className="truncate block">{log.oldValue.substring(0, 100)}{log.oldValue.length > 100 ? '...' : ''}</span>
-                    ) : '-'}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+        <Card>
+          <CardContent className="p-0">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Timestamp</TableHead>
+                  <TableHead>User</TableHead>
+                  <TableHead>Action</TableHead>
+                  <TableHead>Entity</TableHead>
+                  <TableHead>Details</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {logs.map(log => (
+                  <TableRow key={log.id}>
+                    <TableCell className="whitespace-nowrap">{formatDate(log.timestamp)}</TableCell>
+                    <TableCell>
+                      <div>
+                        <p className="font-medium">{log.user.name}</p>
+                        <p className="text-xs text-muted-foreground">{log.user.email}</p>
+                      </div>
+                    </TableCell>
+                    <TableCell><Badge variant={actionVariants[log.action] || 'outline'}>{log.action}</Badge></TableCell>
+                    <TableCell>{log.entity}</TableCell>
+                    <TableCell className="max-w-xs text-xs text-muted-foreground">
+                      {log.newValue ? (
+                        <span className="truncate block">{log.newValue.substring(0, 100)}{log.newValue.length > 100 ? '...' : ''}</span>
+                      ) : log.oldValue ? (
+                        <span className="truncate block">{log.oldValue.substring(0, 100)}{log.oldValue.length > 100 ? '...' : ''}</span>
+                      ) : '-'}
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </CardContent>
+        </Card>
       )}
     </div>
   );
