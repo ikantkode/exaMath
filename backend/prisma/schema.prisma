@@ -29,7 +29,6 @@ enum ProjectStatus {
 enum SovStatus {
   DRAFT
   SUBMITTED
-  APPROVED
   LOCKED
 }
 

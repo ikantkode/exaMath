@@ -1,8 +1,18 @@
 import { Router } from 'express';
 import prisma from '../../prisma/client';
 import { authenticate, authorize, AuthRequest } from '../middleware/auth';
+import { logAction } from '../utils/audit';
 
 const router = Router();
+
+router.get('/', authenticate, async (_req: AuthRequest, res) => {
+  try {
+    const categories = await prisma.budgetCategory.findMany({
+      include: { project: true },
+    });
+    res.json(categories);
+  } catch (e) { res.status(500).json({ error: 'Failed to fetch budget categories' }); }
+});
 
 router.post('/', authenticate, authorize('OWNER', 'MANAGER'), async (req: AuthRequest, res) => {
   try {
@@ -40,11 +50,5 @@ router.delete('/:id', authenticate, authorize('OWNER'), async (req: AuthRequest,
     res.status(500).json({ error: 'Failed to delete budget category' });
   }
 });
-
-async function logAction(userId: string, action: string, entity: string, entityId: string | null, oldValue: string | null, newValue: string | null) {
-  await prisma.auditLog.create({
-    data: { userId, action, entity, entityId, oldValue, newValue },
-  });
-}
 
 export default router;

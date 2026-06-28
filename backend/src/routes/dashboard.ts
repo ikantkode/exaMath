@@ -4,7 +4,7 @@ import { authenticate, authorize, AuthRequest } from '../middleware/auth';
 
 const router = Router();
 
-router.get('/', authenticate, authorize('OWNER', 'MANAGER'), async (req: AuthRequest, res) => {
+router.get('/', authenticate, authorize('OWNER', 'MANAGER'), async (_req: AuthRequest, res) => {
   try {
     const projects = await prisma.project.findMany();
     const totalExpenses = await prisma.expense.aggregate({ _sum: { amount: true } });

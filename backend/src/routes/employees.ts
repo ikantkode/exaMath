@@ -1,15 +1,11 @@
 import { Router } from 'express';
 import prisma from '../../prisma/client';
 import { authenticate, authorize, AuthRequest } from '../middleware/auth';
+import { logAction } from '../utils/audit';
 
 const router = Router();
-const logAction = async (userId: string, action: string, entity: string, entityId?: string) => {
-  await prisma.auditLog.create({
-    data: { userId, action, entity, entityId },
-  });
-};
 
-router.get('/', authenticate, async (req: AuthRequest, res) => {
+router.get('/', authenticate, async (_req: AuthRequest, res) => {
   try {
     const employees = await prisma.employee.findMany({ orderBy: { createdAt: 'desc' } });
     res.json(employees);

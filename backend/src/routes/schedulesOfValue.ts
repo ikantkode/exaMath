@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import prisma from '../../prisma/client';
 import { authenticate, authorize, AuthRequest } from '../middleware/auth';
+import { logAction } from '../utils/audit';
 
 const router = Router();
 
@@ -332,11 +333,5 @@ router.delete('/project/:projectId/change-orders/:coId', authenticate, authorize
     res.status(500).json({ error: 'Failed to delete change order' });
   }
 });
-
-async function logAction(userId: string, action: string, entity: string, entityId: string) {
-  await prisma.auditLog.create({
-    data: { userId, action, entity, entityId },
-  });
-}
 
 export default router;

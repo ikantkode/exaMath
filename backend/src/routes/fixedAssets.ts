@@ -1,10 +1,11 @@
 import { Router } from 'express';
 import prisma from '../../prisma/client';
 import { authenticate, authorize, AuthRequest } from '../middleware/auth';
+import { logAction } from '../utils/audit';
 
 const router = Router();
 
-router.get('/', authenticate, authorize('OWNER', 'MANAGER'), async (req: AuthRequest, res) => {
+router.get('/', authenticate, authorize('OWNER', 'MANAGER'), async (_req: AuthRequest, res) => {
   try {
     const assets = await prisma.fixedAsset.findMany({
       orderBy: { purchaseDate: 'desc' },
@@ -76,11 +77,5 @@ router.delete('/:id', authenticate, authorize('OWNER'), async (req: AuthRequest,
     res.status(500).json({ error: 'Failed to delete fixed asset' });
   }
 });
-
-async function logAction(userId: string, action: string, entity: string, entityId: string | null, oldValue: string | null, newValue: string | null) {
-  await prisma.auditLog.create({
-    data: { userId, action, entity, entityId, oldValue, newValue },
-  });
-}
 
 export default router;

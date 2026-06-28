@@ -3,6 +3,7 @@ import bcrypt from 'bcrypt';
 import jwt from 'jsonwebtoken';
 import prisma from '../../prisma/client';
 import { authenticate, AuthRequest } from '../middleware/auth';
+import { JWT_SECRET } from '../index';
 
 const router = Router();
 
@@ -39,7 +40,7 @@ router.post('/register', async (req, res) => {
 
     const token = jwt.sign(
       { id: user.id, role: user.role, email: user.email },
-      process.env.JWT_SECRET || 'construction_secret_key_2024',
+      JWT_SECRET,
       { expiresIn: '24h' }
     );
 
@@ -74,7 +75,7 @@ router.post('/login', async (req, res) => {
 
     const token = jwt.sign(
       { id: user.id, role: user.role, email: user.email },
-      process.env.JWT_SECRET || 'construction_secret_key_2024',
+      JWT_SECRET,
       { expiresIn: '24h' }
     );
 

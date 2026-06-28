@@ -1,14 +1,12 @@
 import { Router } from 'express';
 import prisma from '../../prisma/client';
 import { authenticate, authorize, AuthRequest } from '../middleware/auth';
+import { logAction } from '../utils/audit';
 
 const router = Router();
-const logAction = async (userId: string, action: string, entity: string, entityId?: string) => {
-  await prisma.auditLog.create({ data: { userId, action, entity, entityId } });
-};
 
 // Field worker master CRUD
-router.get('/workers', authenticate, async (req: AuthRequest, res) => {
+router.get('/workers', authenticate, async (_req: AuthRequest, res) => {
   try {
     const workers = await prisma.fieldWorker.findMany({
       include: { assignments: { include: { project: true } } },
@@ -66,7 +64,6 @@ router.post('/assignments', authenticate, authorize('OWNER', 'MANAGER'), async (
     if (!fieldWorkerId || !projectId) return res.status(400).json({ error: 'Worker and project are required' });
     const project = await prisma.project.findUnique({ where: { id: projectId } });
     if (!project) return res.status(404).json({ error: 'Project not found' });
-    // Validate rates based on wage type
     if (project.wageType === 'UNION' && (!wageRate || wageRate <= 0)) return res.status(400).json({ error: 'Wage rate is required for union projects' });
     if (project.wageType === 'UNION' && (!benefitRate || benefitRate <= 0)) return res.status(400).json({ error: 'Benefit rate is required for union projects' });
     if ((project.wageType === 'PREVAILING' || project.wageType === 'PRIVATE') && !wageRate) return res.status(400).json({ error: 'Wage rate is required' });
@@ -101,7 +98,6 @@ router.get('/payroll/:projectId', authenticate, async (req: AuthRequest, res) =>
         payrollEntries: { include: { assignment: true }, orderBy: { createdAt: 'desc' } },
       },
     });
-    // Flatten for frontend
     const allEntries = assignments.flatMap(a => a.payrollEntries.map(p => ({
       ...p,
       fieldWorker: a.fieldWorker,
@@ -122,13 +118,11 @@ router.post('/payroll', authenticate, authorize('OWNER', 'MANAGER'), async (req:
     });
     if (!assignment) return res.status(404).json({ error: 'Assignment not found' });
     const wageType = assignment.project.wageType || 'PRIVATE';
-    // Calculate based on wage type
     let grossWages: number, grossBenefits: number;
     if (wageType === 'UNION') {
       grossWages = hoursWorked * assignment.wageRate;
       grossBenefits = hoursWorked * assignment.benefitRate;
     } else {
-      // PREVAILING or PRIVATE: wage rate includes benefits
       grossWages = hoursWorked * assignment.wageRate;
       grossBenefits = 0;
     }

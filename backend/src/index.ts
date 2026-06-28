@@ -20,6 +20,13 @@ import fieldWorkerRoutes from './routes/fieldWorkers';
 
 dotenv.config();
 
+if (!process.env.JWT_SECRET) {
+  console.error('FATAL: JWT_SECRET environment variable is not set. Server cannot start.');
+  process.exit(1);
+}
+
+export const JWT_SECRET = process.env.JWT_SECRET;
+
 const app = express();
 const PORT = process.env.PORT || 3001;
 
@@ -42,7 +49,7 @@ app.use('/api/users', userRoutes);
 app.use('/api/employees', employeeRoutes);
 app.use('/api/field-workers', fieldWorkerRoutes);
 
-app.get('/api/health', (req, res) => {
+app.get('/api/health', (_req, res) => {
   res.json({ status: 'ok', timestamp: new Date().toISOString() });
 });
 

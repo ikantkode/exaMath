@@ -1,10 +1,11 @@
 import { Router } from 'express';
 import prisma from '../../prisma/client';
 import { authenticate, authorize, AuthRequest } from '../middleware/auth';
+import { logAction } from '../utils/audit';
 
 const router = Router();
 
-router.get('/', authenticate, authorize('OWNER', 'MANAGER'), async (req: AuthRequest, res) => {
+router.get('/', authenticate, authorize('OWNER', 'MANAGER'), async (_req: AuthRequest, res) => {
   try {
     const payouts = await prisma.payout.findMany({
       orderBy: { date: 'desc' },
@@ -25,6 +26,20 @@ router.post('/', authenticate, authorize('OWNER'), async (req: AuthRequest, res)
   }
 });
 
+router.put('/:id', authenticate, authorize('OWNER'), async (req: AuthRequest, res) => {
+  try {
+    const old = await prisma.payout.findUnique({ where: { id: req.params.id } });
+    const payout = await prisma.payout.update({
+      where: { id: req.params.id },
+      data: req.body,
+    });
+    await logAction(req.user!.id, 'UPDATE', 'Payout', req.params.id, JSON.stringify(old), JSON.stringify(req.body));
+    res.json(payout);
+  } catch (error) {
+    res.status(500).json({ error: 'Failed to update payout' });
+  }
+});
+
 router.delete('/:id', authenticate, authorize('OWNER'), async (req: AuthRequest, res) => {
   try {
     await prisma.payout.delete({ where: { id: req.params.id } });
@@ -34,11 +49,5 @@ router.delete('/:id', authenticate, authorize('OWNER'), async (req: AuthRequest,
     res.status(500).json({ error: 'Failed to delete payout' });
   }
 });
-
-async function logAction(userId: string, action: string, entity: string, entityId: string | null, oldValue: string | null, newValue: string | null) {
-  await prisma.auditLog.create({
-    data: { userId, action, entity, entityId, oldValue, newValue },
-  });
-}
 
 export default router;

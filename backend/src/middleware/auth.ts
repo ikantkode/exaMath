@@ -1,5 +1,6 @@
 import { Request, Response, NextFunction } from 'express';
 import jwt from 'jsonwebtoken';
+import { JWT_SECRET } from '../index';
 
 export interface AuthRequest extends Request {
   user?: {
@@ -16,7 +17,7 @@ export const authenticate = (req: AuthRequest, res: Response, next: NextFunction
       return res.status(401).json({ error: 'Authentication required' });
     }
 
-    const decoded = jwt.verify(token, process.env.JWT_SECRET || 'construction_secret_key_2024') as {
+    const decoded = jwt.verify(token, JWT_SECRET) as {
       id: string;
       role: string;
       email: string;

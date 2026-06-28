@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import prisma from '../../prisma/client';
-import { authenticate, AuthRequest } from '../middleware/auth';
+import { authenticate, authorize, AuthRequest } from '../middleware/auth';
+import { logAction } from '../utils/audit';
 
 const router = Router();
 
@@ -23,7 +24,7 @@ router.get('/', authenticate, async (req: AuthRequest, res) => {
   }
 });
 
-router.post('/', authenticate, async (req: AuthRequest, res) => {
+router.post('/', authenticate, authorize('OWNER', 'MANAGER'), async (req: AuthRequest, res) => {
   try {
     const { amount, description, expenseType, date, categoryId, projectId } = req.body;
     const expense = await prisma.expense.create({
@@ -44,7 +45,7 @@ router.post('/', authenticate, async (req: AuthRequest, res) => {
   }
 });
 
-router.put('/:id', authenticate, async (req: AuthRequest, res) => {
+router.put('/:id', authenticate, authorize('OWNER', 'MANAGER'), async (req: AuthRequest, res) => {
   try {
     const old = await prisma.expense.findUnique({ where: { id: req.params.id } });
     const expense = await prisma.expense.update({
@@ -58,7 +59,7 @@ router.put('/:id', authenticate, async (req: AuthRequest, res) => {
   }
 });
 
-router.delete('/:id', authenticate, async (req: AuthRequest, res) => {
+router.delete('/:id', authenticate, authorize('OWNER'), async (req: AuthRequest, res) => {
   try {
     await prisma.expense.delete({ where: { id: req.params.id } });
     await logAction(req.user!.id, 'DELETE', 'Expense', req.params.id, null, null);
@@ -67,11 +68,5 @@ router.delete('/:id', authenticate, async (req: AuthRequest, res) => {
     res.status(500).json({ error: 'Failed to delete expense' });
   }
 });
-
-async function logAction(userId: string, action: string, entity: string, entityId: string | null, oldValue: string | null, newValue: string | null) {
-  await prisma.auditLog.create({
-    data: { userId, action, entity, entityId, oldValue, newValue },
-  });
-}
 
 export default router;

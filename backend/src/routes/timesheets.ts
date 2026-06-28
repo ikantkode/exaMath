@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import prisma from '../../prisma/client';
 import { authenticate, authorize, AuthRequest } from '../middleware/auth';
+import { logAction } from '../utils/audit';
 
 const router = Router();
 
@@ -21,7 +22,7 @@ router.get('/', authenticate, async (req: AuthRequest, res) => {
   }
 });
 
-router.post('/', authenticate, async (req: AuthRequest, res) => {
+router.post('/', authenticate, authorize('OWNER', 'MANAGER'), async (req: AuthRequest, res) => {
   try {
     const { hours, rate, date, projectId } = req.body;
     const timesheet = await prisma.timesheet.create({
@@ -63,11 +64,5 @@ router.delete('/:id', authenticate, authorize('OWNER'), async (req: AuthRequest,
     res.status(500).json({ error: 'Failed to delete timesheet' });
   }
 });
-
-async function logAction(userId: string, action: string, entity: string, entityId: string | null, oldValue: string | null, newValue: string | null) {
-  await prisma.auditLog.create({
-    data: { userId, action, entity, entityId, oldValue, newValue },
-  });
-}
 
 export default router;

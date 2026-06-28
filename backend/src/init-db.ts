@@ -12,13 +12,13 @@ async function ensureDatabaseExists() {
   try {
     const prisma = new PrismaClient({ datasources: { db: { url: postgresUrl } } });
 
-    const result = await prisma.$queryRawUnsafe(
-      `SELECT EXISTS(SELECT 1 FROM pg_database WHERE datname = '${dbName}')`
-    ) as [{ exists: boolean }];
+    const result = await prisma.$queryRaw`
+      SELECT EXISTS(SELECT 1 FROM pg_database WHERE datname = ${dbName})
+    ` as [{ exists: boolean }];
 
     if (!result[0].exists) {
       console.log(`Database "${dbName}" not found. Creating...`);
-      await prisma.$executeRawUnsafe(`CREATE DATABASE "${dbName}"`);
+      await prisma.$executeRaw`CREATE DATABASE "${dbName}"`;
       console.log(`Database "${dbName}" created.`);
     } else {
       console.log(`Database "${dbName}" exists.`);
