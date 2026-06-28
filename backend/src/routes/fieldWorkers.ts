@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import prisma from '../../prisma/client';
-import { authenticate, authorize } from '../middleware/auth';
+import { authenticate, authorize, AuthRequest } from '../middleware/auth';
 
 const router = Router();
 const logAction = async (userId: string, action: string, entity: string, entityId?: string) => {
@@ -8,7 +8,7 @@ const logAction = async (userId: string, action: string, entity: string, entityI
 };
 
 // Field worker master CRUD
-router.get('/workers', authenticate, async (req: any, res) => {
+router.get('/workers', authenticate, async (req: AuthRequest, res) => {
   try {
     const workers = await prisma.fieldWorker.findMany({
       include: { assignments: { include: { project: true } } },
@@ -18,38 +18,38 @@ router.get('/workers', authenticate, async (req: any, res) => {
   } catch (e) { res.status(500).json({ error: 'Failed to fetch field workers' }); }
 });
 
-router.post('/workers', authenticate, authorize('OWNER', 'MANAGER'), async (req: any, res) => {
+router.post('/workers', authenticate, authorize('OWNER', 'MANAGER'), async (req: AuthRequest, res) => {
   try {
     const { name, address, phone, email, compensationType, isUnion } = req.body;
     if (!name || !compensationType) return res.status(400).json({ error: 'Name and compensation type are required' });
     const worker = await prisma.fieldWorker.create({ data: { name, address, phone, email, compensationType, isUnion } });
-    await logAction(req.user.id, 'CREATE', 'FieldWorker', worker.id);
+    await logAction(req.user!.id, 'CREATE', 'FieldWorker', worker.id);
     res.status(201).json(worker);
   } catch (e: any) { res.status(500).json({ error: e.message || 'Failed to create field worker' }); }
 });
 
-router.put('/workers/:id', authenticate, authorize('OWNER', 'MANAGER'), async (req: any, res) => {
+router.put('/workers/:id', authenticate, authorize('OWNER', 'MANAGER'), async (req: AuthRequest, res) => {
   try {
     const { id } = req.params;
     const worker = await prisma.fieldWorker.findUnique({ where: { id } });
     if (!worker) return res.status(404).json({ error: 'Worker not found' });
     const updated = await prisma.fieldWorker.update({ where: { id }, data: req.body });
-    await logAction(req.user.id, 'UPDATE', 'FieldWorker', id);
+    await logAction(req.user!.id, 'UPDATE', 'FieldWorker', id);
     res.json(updated);
   } catch (e: any) { res.status(500).json({ error: e.message || 'Failed to update worker' }); }
 });
 
-router.delete('/workers/:id', authenticate, authorize('OWNER'), async (req: any, res) => {
+router.delete('/workers/:id', authenticate, authorize('OWNER'), async (req: AuthRequest, res) => {
   try {
     const { id } = req.params;
     await prisma.fieldWorker.delete({ where: { id } });
-    await logAction(req.user.id, 'DELETE', 'FieldWorker', id);
+    await logAction(req.user!.id, 'DELETE', 'FieldWorker', id);
     res.json({ message: 'Worker deleted' });
   } catch (e: any) { res.status(500).json({ error: e.message || 'Failed to delete worker' }); }
 });
 
 // Assignments
-router.get('/assignments/:projectId', authenticate, async (req: any, res) => {
+router.get('/assignments/:projectId', authenticate, async (req: AuthRequest, res) => {
   try {
     const { projectId } = req.params;
     const assignments = await prisma.fieldWorkerAssignment.findMany({
@@ -60,7 +60,7 @@ router.get('/assignments/:projectId', authenticate, async (req: any, res) => {
   } catch (e) { res.status(500).json({ error: 'Failed to fetch assignments' }); }
 });
 
-router.post('/assignments', authenticate, authorize('OWNER', 'MANAGER'), async (req: any, res) => {
+router.post('/assignments', authenticate, authorize('OWNER', 'MANAGER'), async (req: AuthRequest, res) => {
   try {
     const { fieldWorkerId, projectId, wageRate, benefitRate } = req.body;
     if (!fieldWorkerId || !projectId) return res.status(400).json({ error: 'Worker and project are required' });
@@ -73,7 +73,7 @@ router.post('/assignments', authenticate, authorize('OWNER', 'MANAGER'), async (
     const assignment = await prisma.fieldWorkerAssignment.create({
       data: { fieldWorkerId, projectId, wageRate: wageRate || 0, benefitRate: benefitRate || 0 },
     });
-    await logAction(req.user.id, 'CREATE', 'FieldWorkerAssignment', assignment.id);
+    await logAction(req.user!.id, 'CREATE', 'FieldWorkerAssignment', assignment.id);
     res.status(201).json(assignment);
   } catch (e: any) {
     if (e.code === 'P2002') return res.status(409).json({ error: 'Worker already assigned to this project' });
@@ -81,17 +81,17 @@ router.post('/assignments', authenticate, authorize('OWNER', 'MANAGER'), async (
   }
 });
 
-router.delete('/assignments/:id', authenticate, authorize('OWNER', 'MANAGER'), async (req: any, res) => {
+router.delete('/assignments/:id', authenticate, authorize('OWNER', 'MANAGER'), async (req: AuthRequest, res) => {
   try {
     const { id } = req.params;
     await prisma.fieldWorkerAssignment.delete({ where: { id } });
-    await logAction(req.user.id, 'DELETE', 'FieldWorkerAssignment', id);
+    await logAction(req.user!.id, 'DELETE', 'FieldWorkerAssignment', id);
     res.json({ message: 'Assignment deleted' });
   } catch (e: any) { res.status(500).json({ error: e.message || 'Failed to delete assignment' }); }
 });
 
 // Payroll entries
-router.get('/payroll/:projectId', authenticate, async (req: any, res) => {
+router.get('/payroll/:projectId', authenticate, async (req: AuthRequest, res) => {
   try {
     const { projectId } = req.params;
     const assignments = await prisma.fieldWorkerAssignment.findMany({
@@ -112,7 +112,7 @@ router.get('/payroll/:projectId', authenticate, async (req: any, res) => {
   } catch (e) { res.status(500).json({ error: 'Failed to fetch payroll' }); }
 });
 
-router.post('/payroll', authenticate, authorize('OWNER', 'MANAGER'), async (req: any, res) => {
+router.post('/payroll', authenticate, authorize('OWNER', 'MANAGER'), async (req: AuthRequest, res) => {
   try {
     const { assignmentId, hoursWorked, periodStart, periodEnd, taxes, deductions } = req.body;
     if (!assignmentId || !hoursWorked) return res.status(400).json({ error: 'Assignment and hours are required' });
@@ -136,7 +136,7 @@ router.post('/payroll', authenticate, authorize('OWNER', 'MANAGER'), async (req:
     const entry = await prisma.fieldWorkerPayroll.create({
       data: { assignmentId, hoursWorked, grossWages, grossBenefits, taxes: taxes || 0, deductions: deductions || 0, netPay, periodStart, periodEnd },
     });
-    await logAction(req.user.id, 'CREATE', 'FieldWorkerPayroll', entry.id);
+    await logAction(req.user!.id, 'CREATE', 'FieldWorkerPayroll', entry.id);
     res.status(201).json(entry);
   } catch (e: any) { res.status(500).json({ error: e.message || 'Failed to create payroll entry' }); }
 });

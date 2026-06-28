@@ -13,5 +13,13 @@ const toast = ({ title, description, variant = "default" }: ToastProps) => {
   })
 }
 
+toast.success = (title: string, description?: string) => {
+  return sonnerToast.success(title, { description })
+}
+
+toast.error = (title: string, description?: string) => {
+  return sonnerToast.error(title, { description })
+}
+
 export { toast }
 export { Toaster } from "./sonner"
