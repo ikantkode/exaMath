@@ -98,7 +98,7 @@ router.get('/payroll/:projectId', authenticate, async (req: AuthRequest, res) =>
         payrollEntries: { include: { assignment: true }, orderBy: { createdAt: 'desc' } },
       },
     });
-    const allEntries = assignments.flatMap(a => a.payrollEntries.map(p => ({
+    const allEntries = assignments.flatMap((a: any) => a.payrollEntries.map((p: any) => ({
       ...p,
       fieldWorker: a.fieldWorker,
       wageRate: a.wageRate,
