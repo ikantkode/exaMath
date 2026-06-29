@@ -8,7 +8,7 @@ const router = Router();
 router.get('/', authenticate, async (_req: AuthRequest, res) => {
   try {
     const payroll = await prisma.officePayroll.findMany({
-      include: { employee: true },
+      include: { employee: true } as any,
       orderBy: { periodEnd: 'desc' },
     });
     res.json(payroll);
@@ -20,7 +20,7 @@ router.post('/', authenticate, authorize('OWNER', 'MANAGER'), async (req: AuthRe
     const { employeeId, grossPay, wages, benefits, taxes, deductions, netPay, periodStart, periodEnd, paid } = req.body;
     if (!employeeId || grossPay === undefined || !periodStart || !periodEnd) return res.status(400).json({ error: 'Employee, gross pay, and period dates are required' });
     const payroll = await prisma.officePayroll.create({
-      data: { employeeId, grossPay, wages: wages || 0, benefits: benefits || 0, taxes: taxes || 0, deductions: deductions || 0, netPay, periodStart, periodEnd, paid: paid || false },
+      data: { employeeId: employeeId as any, grossPay, wages: wages || 0, benefits: benefits || 0, taxes: taxes || 0, deductions: deductions || 0, netPay, periodStart, periodEnd, paid: paid || false },
     });
     await logAction(req.user!.id, 'CREATE', 'OfficePayroll', payroll.id);
     res.status(201).json(payroll);

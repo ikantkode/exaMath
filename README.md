@@ -39,13 +39,18 @@ Projects support three wage types:
 | **Prevailing** | Required (combined wage + benefit) | Optional (separate) | Combined payment |
 | **Private** | Required (combined wage + benefit) | Optional (separate) | Combined payment |
 
-## Quick Start
+---
+
+## Deployment & Setup
 
 ### Prerequisites
-- Docker & Docker Compose
-- Node.js 18+ (for local dev outside Docker)
 
-### Docker (recommended)
+- **Docker** & **Docker Compose** (for Docker deployment)
+- **Node.js 18+** (for local development outside Docker)
+
+---
+
+### Option 1: Docker Compose (Recommended)
 
 ```bash
 git clone https://github.com/ikantkode/exaMath.git
@@ -58,24 +63,103 @@ docker compose up --build
 
 On first launch, the app will prompt you to create an admin account. The first account created automatically becomes the **OWNER**.
 
-### Local Development
+---
 
-**Backend:**
+### Option 2: Local Development (Non-Docker)
+
+#### 1. Clone and configure environment variables
+
+```bash
+git clone https://github.com/ikantkode/exaMath.git
+cd exaMath
+cp backend/.env.example backend/.env
+```
+
+Edit `backend/.env` to set your credentials:
+
+```env
+DATABASE_URL="postgresql://construction:construction_pass@localhost:5434/construction_db"
+JWT_SECRET="change_this_to_a_random_secret"
+PORT=3001
+```
+
+#### 2. Start PostgreSQL
+
+```bash
+# Docker Compose (db only)
+docker compose up db -d
+
+# Or run PostgreSQL locally on port 5434 with a database named construction_db
+```
+
+#### 3. Backend
+
 ```bash
 cd backend
 npm install
-cp .env.example .env
-npm run db:generate
-npm run db:migrate
-npm run dev
+npm run db:generate    # Generate Prisma client
+npm run db:migrate     # Run database migrations
+npm run dev            # Start dev server on port 3001
 ```
 
-**Frontend:**
+#### 4. Frontend
+
 ```bash
 cd frontend
 npm install
-npm run dev
+npm run dev            # Start dev server on port 5173
 ```
+
+- Frontend: http://localhost:5173
+- Backend API: http://localhost:3001
+
+---
+
+### Option 3: Standalone Production (Nginx)
+
+Build and deploy on a single server:
+
+```bash
+# 1. Start the database
+docker compose up db -d
+
+# 2. Build the backend
+cd backend
+npm install
+npm run db:generate
+npm run db:migrate
+npm run build          # Outputs to backend/dist/
+
+# 3. Start the backend (production)
+cp .env.example .env   # Configure your .env
+npm start              # Runs node dist/index.js on port 3001
+
+# 4. Build the frontend
+cd ../frontend
+npm install
+npm run build          # Outputs to frontend/dist/
+
+# 5. Configure and start Nginx
+# Update nginx.conf with your domain, then:
+cp nginx.conf /etc/nginx/conf.d/examath.conf
+nginx -t && systemctl restart nginx
+```
+
+**Ports:** Frontend `7307` / Backend `3001` / Database `5434`
+
+---
+
+### First-Time Setup
+
+Regardless of deployment method, on first launch:
+
+1. Open the app in a browser
+2. If no users exist, you'll see a **Setup** page
+3. Enter your name, email, and password
+4. The first account created automatically becomes the **OWNER** (full access)
+5. Additional users can be added via **Team Management** (OWNER/Manager only)
+
+---
 
 ## SOV Inline Editing
 
@@ -140,7 +224,7 @@ exaMath/
 │   │       ├── auditLogs.ts
 │   │       └── dashboard.ts
 │   ├── prisma/
-│   │   ├── schema.prisma            # 17 models, 6 enums
+│   │   ├── schema.prisma            # 20 models, 6 enums
 │   │   └── client.ts                # Prisma client singleton
 │   ├── .env / .env.example
 │   └── Dockerfile
@@ -149,7 +233,7 @@ exaMath/
 │   │   ├── App.tsx                  # Router, AuthProvider, setup check
 │   │   ├── components/
 │   │   │   ├── Layout.tsx           # Sidebar with user dropdown menu
-│   │   │   └── ui/                  # shadcn/ui v4 components
+│   │   │   └── ui/                  # shadcn/ui v4 components (22 primitives)
 │   │   ├── context/
 │   │   │   └── AuthContext.tsx      # Auth state + updateUser
 │   │   ├── pages/
@@ -165,7 +249,8 @@ exaMath/
 │   │   └── utils/api.ts             # API client with Bearer token
 │   └── Dockerfile
 ├── docker-compose.yml
-└── nginx.conf
+├── nginx.conf
+└── .env.example
 ```
 
 ## Database Models
@@ -174,12 +259,25 @@ exaMath/
 - **Project** — Construction projects with wageType (Union/Prevailing/Private)
 - **BudgetCategory, Expense, Timesheet** — Project financial tracking
 - **ScheduleOfValue, SovItem, ChangeOrder** — CSI-coded SOV with status workflow
+- **SubcontractorAgreement, SubcontractorChangeOrder, SubcontractorFile** — Subcontractor management with file uploads
 - **Employee** — Office staff (name, address, phone, email, W2/1099, salary, bonus, deductions, taxes, union flag)
 - **OfficePayroll** — Per-period payroll linked to Employee
 - **FieldWorker** — Field worker master record
 - **FieldWorkerAssignment** — Links worker to project with wage/benefit rates
 - **FieldWorkerPayroll** — Per-period payroll with auto-calculated wages/benefits
 - **FixedAsset, Payout, AuditLog** — Asset tracking, payouts, action history
+
+## Environment Variables
+
+### Backend (`.env` or `docker-compose.yml`)
+
+| Variable | Description | Example |
+|----------|-------------|---------|
+| `DATABASE_URL` | PostgreSQL connection string | `postgresql://user:pass@db:5432/dbname` |
+| `JWT_SECRET` | Secret key for JWT signing (change in production!) | `your_secret_key_here` |
+| `PORT` | Backend server port | `3001` |
+
+See `backend/.env.example` for a complete template.
 
 ## Notes
 
@@ -188,6 +286,7 @@ exaMath/
 - **Settings** is accessible from the user dropdown at the bottom of the sidebar
 - **Auto DB initialization** — backend creates the database on startup if it doesn't exist
 - **No linter/formatter config** — project follows informal conventions
+- **Database reset** — to wipe all data and start fresh: `docker compose down -v && docker compose up --build`
 
 ## License
 
