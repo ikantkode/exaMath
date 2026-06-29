@@ -1,0 +1,389 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider     = "postgresql"
+  url          = env("DATABASE_URL")
+  relationMode = "prisma"
+}
+
+enum UserRole {
+  OWNER
+  MANAGER
+  CREW
+}
+
+enum ExpenseType {
+  LABOR
+  MATERIAL
+  EQUIPMENT
+  SUBCONTRACTOR
+}
+
+enum ProjectStatus {
+  ACTIVE
+  COMPLETED
+  ON_HOLD
+}
+
+enum SovStatus {
+  DRAFT
+  SUBMITTED
+  LOCKED
+}
+
+enum WageType {
+  UNION
+  PREVAILING
+  PRIVATE
+}
+
+enum CompensationType {
+  W2
+  INDEPENDENT_CONTRACTOR
+}
+
+model User {
+  id            String    @id @default(uuid())
+  name          String
+  email         String    @unique
+  password      String
+  role          UserRole  @default(CREW)
+  assignedProjectIds String[] @default([])
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+  timesheets    Timesheet[]
+  auditLogs        AuditLog[]
+  expenses         Expense[]
+  scheduleChats    ScheduleChat[]
+}
+
+model Project {
+  id                    String        @id @default(uuid())
+  name                  String
+  clientName            String?
+  originalContract      Float
+  totalChangeOrders     Float         @default(0)
+  status                ProjectStatus @default(ACTIVE)
+  estimatedCompletion   Float         @default(0)
+  startDate             DateTime?
+  endDate               DateTime?
+  description           String?
+  projectIdentificationIds String[]   @default([])
+  wageType              WageType?
+  createdAt             DateTime      @default(now())
+  updatedAt             DateTime      @updatedAt
+  budgetCategories      BudgetCategory[]
+  expenses              Expense[]
+  timesheets            Timesheet[]
+  schedulesOfValue      ScheduleOfValue[]
+  changeOrders          ChangeOrder[]
+  fieldWorkerAssignments FieldWorkerAssignment[]
+  subcontractorAgreements SubcontractorAgreement[]
+  scheduleSessions       ScheduleSession[]
+}
+
+model BudgetCategory {
+  id        String  @id @default(uuid())
+  name      String
+  budget    Float
+  projectId String
+  project   Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  expenses  Expense[]
+}
+
+model Expense {
+  id              String        @id @default(uuid())
+  amount          Float
+  description     String
+  expenseType     ExpenseType
+  date            DateTime      @default(now())
+  receiptUrl      String?
+  categoryId      String?
+  category        BudgetCategory? @relation(fields: [categoryId], references: [id], onDelete: SetNull)
+  projectId       String
+  project         Project       @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  createdById     String
+  createdBy       User          @relation(fields: [createdById], references: [id])
+}
+
+// Subcontractor agreements (fixed contracts per project)
+model SubcontractorAgreement {
+  id            String                      @id @default(uuid())
+  projectId     String
+  project       Project                     @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  subcontractorName String
+  contractValue Float
+  description   String?
+  isFinalized   Boolean                     @default(false)
+  createdAt     DateTime                    @default(now())
+  updatedAt     DateTime                    @updatedAt
+  files         SubcontractorFile[]
+  changeOrders  SubcontractorChangeOrder[]
+}
+
+// Change orders for a subcontractor agreement
+model SubcontractorChangeOrder {
+  id                  String                  @id @default(uuid())
+  agreementId         String
+  agreement           SubcontractorAgreement  @relation(fields: [agreementId], references: [id], onDelete: Cascade)
+  description         String
+  value               Float
+  createdAt           DateTime                @default(now())
+  updatedAt           DateTime                @updatedAt
+  files               SubcontractorFile[]
+}
+
+// File attachments for agreements and change orders
+model SubcontractorFile {
+  id              String   @id @default(uuid())
+  agreementId     String?
+  agreement       SubcontractorAgreement? @relation(fields: [agreementId], references: [id], onDelete: Cascade)
+  changeOrderId   String?
+  changeOrder     SubcontractorChangeOrder? @relation(fields: [changeOrderId], references: [id], onDelete: Cascade)
+  fileName        String
+  filePath        String
+  fileSize        Int
+  fileType        String
+  uploadedAt      DateTime @default(now())
+}
+
+model Timesheet {
+  id        String   @id @default(uuid())
+  hours     Float
+  rate      Float
+  date      DateTime @default(now())
+  projectId String
+  project   Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  userId    String
+  user      User     @relation(fields: [userId], references: [id])
+}
+
+model ScheduleOfValue {
+  id              String      @id @default(uuid())
+  projectId       String
+  project         Project     @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  name            String
+  status          SovStatus   @default(DRAFT)
+  approvedBy      String?
+  approvedAt      DateTime?
+  totalValue      Float       @default(0)
+  createdAt       DateTime    @default(now())
+  updatedAt       DateTime    @updatedAt
+  items           SovItem[]
+  changeOrders    ChangeOrder[]
+}
+
+model SovItem {
+  id              String        @id @default(uuid())
+  sovId           String
+  sov             ScheduleOfValue @relation(fields: [sovId], references: [id], onDelete: Cascade)
+  itemNumber      Int
+  csiCode         String
+  csiCodeTitle    String
+  description     String
+  value           Float         @default(0)
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+}
+
+model ChangeOrder {
+  id              String      @id @default(uuid())
+  projectId       String
+  project         Project     @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  sovId           String?
+  sov             ScheduleOfValue? @relation(fields: [sovId], references: [id])
+  itemNumber      Int?
+  csiCode         String?
+  csiCodeTitle    String?
+  description     String
+  value           Float
+  status          SovStatus   @default(DRAFT)
+  approvedBy      String?
+  approvedAt      DateTime?
+  createdAt       DateTime    @default(now())
+  updatedAt       DateTime    @updatedAt
+}
+
+// Office employees (master record)
+model Employee {
+  id                  String            @id @default(uuid())
+  name                String
+  address             String?
+  phone               String?
+  email               String?
+  position            String?
+  compensationType    CompensationType
+  salary              Float
+  bonus               Float             @default(0)
+  deductions          Float             @default(0)
+  taxes               Float             @default(0)
+  isUnion             Boolean           @default(false)
+  createdAt           DateTime          @default(now())
+  updatedAt           DateTime          @updatedAt
+  payrollRecords      OfficePayroll[]
+}
+
+// Office payroll records (per period)
+model OfficePayroll {
+  id          String   @id @default(uuid())
+  employeeId  String
+  employee    Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  grossPay    Float
+  wages       Float
+  benefits    Float   @default(0)
+  taxes       Float   @default(0)
+  deductions  Float   @default(0)
+  netPay      Float
+  periodStart DateTime
+  periodEnd   DateTime
+  paid        Boolean @default(false)
+  createdAt   DateTime @default(now())
+}
+
+// Field worker master record
+model FieldWorker {
+  id                 String            @id @default(uuid())
+  name               String
+  address            String?
+  phone              String?
+  email              String?
+  compensationType   CompensationType
+  isUnion            Boolean           @default(false)
+  createdAt          DateTime          @default(now())
+  updatedAt          DateTime          @updatedAt
+  assignments        FieldWorkerAssignment[]
+}
+
+// Field worker assigned to a project with wage/benefit rates
+model FieldWorkerAssignment {
+  id               String        @id @default(uuid())
+  fieldWorkerId    String
+  fieldWorker      FieldWorker   @relation(fields: [fieldWorkerId], references: [id], onDelete: Cascade)
+  projectId        String
+  project          Project       @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  wageRate         Float         @default(0)
+  benefitRate      Float         @default(0)
+  createdAt        DateTime      @default(now())
+  updatedAt        DateTime      @updatedAt
+  payrollEntries   FieldWorkerPayroll[]
+
+  @@unique([fieldWorkerId, projectId])
+}
+
+// Field worker payroll per period
+model FieldWorkerPayroll {
+  id               String      @id @default(uuid())
+  assignmentId     String
+  assignment       FieldWorkerAssignment @relation(fields: [assignmentId], references: [id], onDelete: Cascade)
+  hoursWorked      Float
+  grossWages       Float
+  grossBenefits    Float       @default(0)
+  taxes            Float       @default(0)
+  deductions       Float       @default(0)
+  netPay           Float
+  periodStart      DateTime
+  periodEnd        DateTime
+  paid             Boolean     @default(false)
+  createdAt        DateTime    @default(now())
+}
+
+model FixedAsset {
+  id            String   @id @default(uuid())
+  name          String
+  category      String
+  purchasePrice Float
+  purchaseDate  DateTime @default(now())
+  usefulLife    Int
+  accumulatedDepreciation Float @default(0)
+  currentValue  Float
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+}
+
+model Payout {
+  id          String   @id @default(uuid())
+  type        String
+  amount      Float
+  recipient   String
+  description String?
+  date        DateTime @default(now())
+  createdAt   DateTime @default(now())
+}
+
+model AuditLog {
+  id        String   @id @default(uuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id])
+  action    String
+  entity    String
+  entityId  String?
+  oldValue  String?
+  newValue  String?
+  timestamp DateTime @default(now())
+}
+
+// --- Schedule Management ---
+
+enum ScheduleFormat {
+  MSPDI
+  PMXML
+  P6PRO
+}
+
+enum TaskStatus {
+  NOT_STARTED
+  IN_PROGRESS
+  COMPLETED
+  WAITING
+  ON_HOLD
+}
+
+model ScheduleSession {
+  id                String           @id @default(uuid())
+  name              String
+  format            ScheduleFormat
+  projectId         String?
+  project           Project?         @relation(fields: [projectId], references: [id])
+  originalXml       String
+  parsedTasks       ScheduleTask[]
+  chatMessages      ScheduleChat[]
+  createdAt         DateTime         @default(now())
+  updatedAt         DateTime         @updatedAt
+}
+
+model ScheduleTask {
+  id                String           @id @default(uuid())
+  sessionId         String
+  session           ScheduleSession  @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  activityId        String
+  name              String
+  startDate         DateTime?
+  finishDate        DateTime?
+  actualStart       DateTime?
+  actualFinish      DateTime?
+  remainingDuration Float            @default(0)
+  physicalPercentComplete Int        @default(0)
+  status            TaskStatus       @default(NOT_STARTED)
+  isCritical        Boolean          @default(false)
+  predecessorIds    String?
+  successorIds      String?
+  calendarId        String?
+  resourceIds       String?
+  activityCode      String?
+  originalXmlData   String?
+  createdAt         DateTime         @default(now())
+  updatedAt         DateTime         @updatedAt
+}
+
+model ScheduleChat {
+  id          String   @id @default(uuid())
+  sessionId   String
+  session     ScheduleSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  taskIds     String?
+  userId      String
+  user        User     @relation(fields: [userId], references: [id])
+  message     String
+  createdAt   DateTime @default(now())
+}
