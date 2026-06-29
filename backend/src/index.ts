@@ -1,5 +1,6 @@
 import express from 'express';
 import cors from 'cors';
+import path from 'path';
 import dotenv from 'dotenv';
 import './init-db';
 import authRoutes from './routes/auth';
@@ -17,6 +18,7 @@ import sovRoutes from './routes/schedulesOfValue';
 import userRoutes from './routes/users';
 import employeeRoutes from './routes/employees';
 import fieldWorkerRoutes from './routes/fieldWorkers';
+import subcontractorRoutes from './routes/subcontractors';
 
 dotenv.config();
 
@@ -32,6 +34,7 @@ const PORT = process.env.PORT || 3001;
 
 app.use(cors());
 app.use(express.json());
+app.use('/uploads', express.static(path.join(__dirname, '..', 'uploads')));
 
 app.use('/api/auth', authRoutes);
 app.use('/api/projects', projectRoutes);
@@ -48,6 +51,7 @@ app.use('/api/schedules-of-value', sovRoutes);
 app.use('/api/users', userRoutes);
 app.use('/api/employees', employeeRoutes);
 app.use('/api/field-workers', fieldWorkerRoutes);
+app.use('/api/subcontractors', subcontractorRoutes);
 
 app.get('/api/health', (_req, res) => {
   res.json({ status: 'ok', timestamp: new Date().toISOString() });

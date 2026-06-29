@@ -183,3 +183,35 @@ export interface Payout {
   date: string;
   createdAt: string;
 }
+
+export interface SubcontractorFile {
+  id: string;
+  fileName: string;
+  filePath: string;
+  fileSize: number;
+  fileType: string;
+  uploadedAt: string;
+}
+
+export interface SubcontractorChangeOrder {
+  id: string;
+  agreementId: string;
+  description: string;
+  value: number;
+  createdAt: string;
+  updatedAt: string;
+  files: SubcontractorFile[];
+}
+
+export interface SubcontractorAgreement {
+  id: string;
+  projectId: string;
+  subcontractorName: string;
+  contractValue: number;
+  description: string | null;
+  isFinalized: boolean;
+  createdAt: string;
+  updatedAt: string;
+  files: SubcontractorFile[];
+  changeOrders: SubcontractorChangeOrder[];
+}

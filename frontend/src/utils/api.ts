@@ -1,10 +1,15 @@
 export const API_URL = '/api';
 
+function getAuthHeaders(): Record<string, string> {
+  const token = localStorage.getItem('token');
+  if (token) return { Authorization: `Bearer ${token}` };
+  return {};
+}
+
 export const api = {
   get: async <T>(url: string): Promise<T> => {
-    const token = localStorage.getItem('token');
     const res = await fetch(`${API_URL}${url}`, {
-      headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+      headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
     });
     if (!res.ok) {
       const error = await res.json().catch(() => ({ error: 'Request failed' }));
@@ -14,11 +19,11 @@ export const api = {
   },
 
   post: async <T>(url: string, body: any): Promise<T> => {
-    const token = localStorage.getItem('token');
+    const isFormData = body instanceof FormData;
     const res = await fetch(`${API_URL}${url}`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) },
-      body: JSON.stringify(body),
+      headers: { ...(isFormData ? {} : { 'Content-Type': 'application/json' }), ...getAuthHeaders() },
+      body: isFormData ? body : JSON.stringify(body),
     });
     if (!res.ok) {
       const error = await res.json().catch(() => ({ error: 'Request failed' }));
@@ -28,10 +33,9 @@ export const api = {
   },
 
   put: async <T>(url: string, body: any): Promise<T> => {
-    const token = localStorage.getItem('token');
     const res = await fetch(`${API_URL}${url}`, {
       method: 'PUT',
-      headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+      headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
       body: JSON.stringify(body),
     });
     if (!res.ok) {
@@ -41,11 +45,23 @@ export const api = {
     return res.json();
   },
 
+  patch: async <T>(url: string, body?: any): Promise<T> => {
+    const res = await fetch(`${API_URL}${url}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
+      body: body ? JSON.stringify(body) : undefined,
+    });
+    if (!res.ok) {
+      const error = await res.json().catch(() => ({ error: 'Request failed' }));
+      throw new Error(error.error || 'Request failed');
+    }
+    return res.json();
+  },
+
   delete: async <T>(url: string): Promise<T> => {
-    const token = localStorage.getItem('token');
     const res = await fetch(`${API_URL}${url}`, {
       method: 'DELETE',
-      headers: { ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+      headers: { ...getAuthHeaders() },
     });
     if (!res.ok) {
       const error = await res.json().catch(() => ({ error: 'Request failed' }));

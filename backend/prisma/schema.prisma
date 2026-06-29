@@ -79,6 +79,7 @@ model Project {
   schedulesOfValue      ScheduleOfValue[]
   changeOrders          ChangeOrder[]
   fieldWorkerAssignments FieldWorkerAssignment[]
+  subcontractorAgreements SubcontractorAgreement[]
 }
 
 model BudgetCategory {
@@ -103,6 +104,47 @@ model Expense {
   project         Project       @relation(fields: [projectId], references: [id], onDelete: Cascade)
   createdById     String
   createdBy       User          @relation(fields: [createdById], references: [id])
+}
+
+// Subcontractor agreements (fixed contracts per project)
+model SubcontractorAgreement {
+  id            String                      @id @default(uuid())
+  projectId     String
+  project       Project                     @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  subcontractorName String
+  contractValue Float
+  description   String?
+  isFinalized   Boolean                     @default(false)
+  createdAt     DateTime                    @default(now())
+  updatedAt     DateTime                    @updatedAt
+  files         SubcontractorFile[]
+  changeOrders  SubcontractorChangeOrder[]
+}
+
+// Change orders for a subcontractor agreement
+model SubcontractorChangeOrder {
+  id                  String                  @id @default(uuid())
+  agreementId         String
+  agreement           SubcontractorAgreement  @relation(fields: [agreementId], references: [id], onDelete: Cascade)
+  description         String
+  value               Float
+  createdAt           DateTime                @default(now())
+  updatedAt           DateTime                @updatedAt
+  files               SubcontractorFile[]
+}
+
+// File attachments for agreements and change orders
+model SubcontractorFile {
+  id              String   @id @default(uuid())
+  agreementId     String?
+  agreement       SubcontractorAgreement? @relation(fields: [agreementId], references: [id], onDelete: Cascade)
+  changeOrderId   String?
+  changeOrder     SubcontractorChangeOrder? @relation(fields: [changeOrderId], references: [id], onDelete: Cascade)
+  fileName        String
+  filePath        String
+  fileSize        Int
+  fileType        String
+  uploadedAt      DateTime @default(now())
 }
 
 model Timesheet {
