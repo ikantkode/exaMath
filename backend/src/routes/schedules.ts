@@ -385,7 +385,7 @@ router.get('/', authenticate, async (_req: AuthRequest, res) => {
       include: { parsedTasks: { orderBy: { activityId: 'asc' } } },
       orderBy: { createdAt: 'desc' },
     });
-    const normalized = sessions.map((s) => ({ ...s, parsedTasks: s.parsedTasks || [] }));
+    const normalized = sessions.map((s: any) => ({ ...s, parsedTasks: s.parsedTasks || [] }));
     res.json(normalized);
   } catch {
     res.status(500).json({ error: 'Failed to fetch schedules' });
