@@ -42,23 +42,11 @@ export default function ScheduleView() {
   const { user } = useAuth();
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
-  const { sessions, activeSession, loading, fetchSessions, exportSchedule, deleteSession, setSelectedTask, loadSession, createVersion, restoreVersion, fetchVersions } = useScheduleStore();
+  const { sessions, activeSession, loading, exportSchedule, deleteSession, setSelectedTask, loadSession, createVersion, restoreVersion, fetchVersions } = useScheduleStore();
   const [activeTab, setActiveTab] = useState('list');
   const [showDeleteConfirm, setShowDeleteConfirm] = useState<string | null>(null);
   const [showVersions, setShowVersions] = useState(false);
-  const [restoreVersionNumber, setRestoreVersionNumber] = useState<number | null>(null);
-
-  useEffect(() => {
-    fetchSessions();
-  }, [fetchSessions]);
-
-  useEffect(() => {
-    const sessionId = searchParams.get('session');
-    if (sessionId && !activeSession) {
-      loadSession(sessionId);
-      navigate('/schedule', { replace: true });
-    }
-  }, []);
+ const [restoreVersionNumber, setRestoreVersionNumber] = useState<number | null>(null);
 
   useEffect(() => {
     if (activeSession) {

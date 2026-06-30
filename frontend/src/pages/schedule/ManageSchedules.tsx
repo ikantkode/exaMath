@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useScheduleStore, type ScheduleSession, type ScheduleVersion, type ScheduleTask } from '@/store/scheduleStore';
+import ScheduleView from './ScheduleView';
 import { Button } from '@/components/ui/button';
 import {
   DropdownMenu,
@@ -51,7 +52,8 @@ function hasStartedTasks(session: ScheduleSession): ScheduleTask[] {
 
 export default function ManageSchedules() {
   const navigate = useNavigate();
-  const { sessions, fetchSessions, deleteSession, restoreVersion, loading, renameSession } = useScheduleStore();
+  const [searchParams] = useSearchParams();
+  const { sessions, activeSession, loading, fetchSessions, deleteSession, restoreVersion, renameSession, loadSession } = useScheduleStore();
   const [showEditName, setShowEditName] = useState<string | null>(null);
   const [editNameValue, setEditNameValue] = useState('');
   const [showDeleteConfirm, setShowDeleteConfirm] = useState<string | null>(null);
@@ -66,6 +68,13 @@ export default function ManageSchedules() {
   useEffect(() => {
     fetchSessions();
   }, [fetchSessions]);
+
+  useEffect(() => {
+    const sessionId = searchParams.get('session');
+    if (sessionId && !activeSession) {
+      loadSession(sessionId);
+    }
+  }, [searchParams.get('session'), activeSession, loadSession]);
 
   const handleView = (id: string) => {
     navigate(`/schedule?session=${id}`);
@@ -168,6 +177,10 @@ export default function ManageSchedules() {
     if (!session) return 0;
     return hasStartedTasks(session).length;
   };
+
+  if (activeSession) {
+    return <ScheduleView />;
+  }
 
   return (
     <div className="space-y-4">
