@@ -69,6 +69,39 @@ export const api = {
     }
     return res.json();
   },
+
+  upload: async (url: string, formData: FormData): Promise<{ id: string }> => {
+    const res = await fetch(`${API_URL}${url}`, {
+      method: 'POST',
+      headers: { ...getAuthHeaders() },
+      body: formData,
+    });
+    if (!res.ok) {
+      const error = await res.json().catch(() => ({ error: 'Upload failed' }));
+      throw new Error(error.error || 'Upload failed');
+    }
+    return res.json();
+  },
+
+  download: async (url: string, filename: string): Promise<void> => {
+    const token = localStorage.getItem('token');
+    const res = await fetch(`${API_URL}${url}`, {
+      headers: token ? { Authorization: `Bearer ${token}` } : {},
+    });
+    if (!res.ok) {
+      const error = await res.json().catch(() => ({ error: 'Download failed' }));
+      throw new Error(error.error || 'Download failed');
+    }
+    const blob = await res.blob();
+    const blobUrl = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = blobUrl;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(blobUrl);
+  },
 };
 
 export const formatCurrency = (amount: number) =>

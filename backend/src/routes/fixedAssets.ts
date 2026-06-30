@@ -34,7 +34,7 @@ router.post('/recalculate', authenticate, authorize('OWNER'), async (req: AuthRe
   try {
     const assets = await prisma.fixedAsset.findMany();
     const now = new Date();
-    const updates = assets.map(async (asset) => {
+    const updates = assets.map(async (asset: any) => {
       const purchaseDate = new Date(asset.purchaseDate);
       const monthsOwned = (now.getFullYear() - purchaseDate.getFullYear()) * 12 + (now.getMonth() - purchaseDate.getMonth());
       const monthlyDepreciation = asset.purchasePrice / (asset.usefulLife * 12);

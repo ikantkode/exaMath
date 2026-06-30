@@ -54,8 +54,10 @@ model User {
   createdAt     DateTime  @default(now())
   updatedAt     DateTime  @updatedAt
   timesheets    Timesheet[]
-  auditLogs     AuditLog[]
-  expenses      Expense[]
+  auditLogs        AuditLog[]
+  expenses         Expense[]
+  scheduleChats    ScheduleChat[]
+  scheduleVersions ScheduleVersion[]
 }
 
 model Project {
@@ -80,6 +82,7 @@ model Project {
   changeOrders          ChangeOrder[]
   fieldWorkerAssignments FieldWorkerAssignment[]
   subcontractorAgreements SubcontractorAgreement[]
+  scheduleSessions       ScheduleSession[]
 }
 
 model BudgetCategory {
@@ -320,4 +323,81 @@ model AuditLog {
   oldValue  String?
   newValue  String?
   timestamp DateTime @default(now())
+}
+
+// --- Schedule Management ---
+
+enum ScheduleFormat {
+  MSPDI
+  PMXML
+  P6PRO
+}
+
+enum TaskStatus {
+  NOT_STARTED
+  IN_PROGRESS
+  COMPLETED
+  WAITING
+  ON_HOLD
+}
+
+model ScheduleSession {
+  id                String           @id @default(uuid())
+  name              String
+  format            ScheduleFormat
+  projectId         String?
+  project           Project?         @relation(fields: [projectId], references: [id])
+  originalXml       String
+  parsedTasks       ScheduleTask[]
+  chatMessages      ScheduleChat[]
+  versions          ScheduleVersion[]
+  createdAt         DateTime         @default(now())
+  updatedAt         DateTime         @updatedAt
+}
+
+model ScheduleTask {
+  id                String           @id @default(uuid())
+  sessionId         String
+  session           ScheduleSession  @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  activityId        String
+  name              String
+  startDate         DateTime?
+  finishDate        DateTime?
+  actualStart       DateTime?
+  actualFinish      DateTime?
+  remainingDuration Float            @default(0)
+  physicalPercentComplete Int        @default(0)
+  status            TaskStatus       @default(NOT_STARTED)
+  isCritical        Boolean          @default(false)
+  predecessorIds    String?
+  successorIds      String?
+  calendarId        String?
+  resourceIds       String?
+  activityCode      String?
+  originalXmlData   String?
+  createdAt         DateTime         @default(now())
+  updatedAt         DateTime         @updatedAt
+}
+
+model ScheduleChat {
+  id          String   @id @default(uuid())
+  sessionId   String
+  session     ScheduleSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  taskIds     String?
+  userId      String
+  user        User     @relation(fields: [userId], references: [id])
+  message     String
+  createdAt   DateTime @default(now())
+}
+
+model ScheduleVersion {
+  id                String           @id @default(uuid())
+  sessionId         String
+  session           ScheduleSession  @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  versionNumber     Int
+  description       String?
+  taskSnapshot      String
+  createdById       String
+  createdBy         User             @relation(fields: [createdById], references: [id])
+  createdAt         DateTime         @default(now())
 }

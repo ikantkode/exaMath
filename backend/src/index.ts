@@ -19,6 +19,7 @@ import userRoutes from './routes/users';
 import employeeRoutes from './routes/employees';
 import fieldWorkerRoutes from './routes/fieldWorkers';
 import subcontractorRoutes from './routes/subcontractors';
+import scheduleRoutes from './routes/schedules';
 
 dotenv.config();
 
@@ -52,9 +53,19 @@ app.use('/api/users', userRoutes);
 app.use('/api/employees', employeeRoutes);
 app.use('/api/field-workers', fieldWorkerRoutes);
 app.use('/api/subcontractors', subcontractorRoutes);
+app.use('/api/schedules', scheduleRoutes);
 
 app.get('/api/health', (_req, res) => {
   res.json({ status: 'ok', timestamp: new Date().toISOString() });
+});
+
+// Global error handler
+app.use((err: any, _req: express.Request, res: express.Response, _next: express.NextFunction) => {
+  console.error('Unhandled error:', err);
+  if (err?.message?.includes('unexpected token') || err?.type === 'entity.parse.failed') {
+    return res.status(400).json({ error: 'Invalid request body' });
+  }
+  res.status(500).json({ error: 'Internal server error' });
 });
 
 app.listen(PORT, () => {

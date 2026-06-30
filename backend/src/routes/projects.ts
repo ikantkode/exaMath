@@ -35,7 +35,7 @@ router.get('/', authenticate, async (req: AuthRequest, res) => {
       });
     }
 
-    const results = await Promise.all(projects.map(async (p) => {
+    const results = await Promise.all(projects.map(async (p: any) => {
       const totalExpenses = await prisma.expense.aggregate({
         where: { projectId: p.id },
         _sum: { amount: true },
@@ -71,8 +71,8 @@ router.get('/:id', authenticate, async (req: AuthRequest, res) => {
 
     if (!project) return res.status(404).json({ error: 'Project not found' });
 
-    const totalExpenses = project.expenses.reduce((sum, e) => sum + e.amount, 0);
-    const totalLabor = project.timesheets.reduce((sum, t) => sum + t.hours * t.rate, 0);
+    const totalExpenses = project.expenses.reduce((sum: number, e: any) => sum + e.amount, 0);
+    const totalLabor = project.timesheets.reduce((sum: number, t: any) => sum + t.hours * t.rate, 0);
 
     res.json({
       ...project,

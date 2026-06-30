@@ -6,3 +6,9 @@ build/
 *.log
 .DS_Store
 uploads/
+
+# Production deployment (exaMath-prod repo only)
+docker-compose.prod.yml
+backend/Dockerfile.prod
+frontend/Dockerfile.prod
+frontend/nginx.prod.conf
