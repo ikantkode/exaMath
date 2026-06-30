@@ -233,7 +233,7 @@ export default function ManageSchedules() {
                         className="inline-flex items-center gap-1 text-muted-foreground hover:text-foreground transition-colors"
                       >
                         <History className="h-3.5 w-3.5" />
-                        {versions.find((v) => v.sessionId === session.id)?.versionNumber || 0}
+                        {(versions.find((v) => v && v.sessionId === session.id)?.versionNumber || 0)}
                       </button>
                     </td>
                     <td className="p-4 text-muted-foreground text-xs">

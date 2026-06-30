@@ -400,6 +400,7 @@ router.get('/:id', authenticate, async (req: AuthRequest, res) => {
       include: {
         parsedTasks: true,
         chatMessages: { include: { user: { select: { name: true } } }, orderBy: { createdAt: 'asc' } },
+        versions: { include: { createdBy: { select: { name: true } } } },
       },
     });
     if (!session) return res.status(404).json({ error: 'Schedule not found' });
@@ -444,7 +445,7 @@ router.post('/:id/versions/:versionNumber/restore', authenticate, async (req: Au
     const versionNumber = parseInt(req.params.versionNumber, 10);
     const session = await restoreVersion(req.params.id, versionNumber, req.user!.id);
     if (!session) return res.status(404).json({ error: 'Version not found' });
-    res.json(session);
+    res.json({ ...session, parsedTasks: session.parsedTasks || [] });
   } catch (e: any) {
     if (e.message === 'Schedule not found' || e.message === 'Version not found') {
       return res.status(404).json({ error: e.message });

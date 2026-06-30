@@ -33,7 +33,7 @@ export default function ScheduleList() {
   const [editingCell, setEditingCell] = useState<{ taskId: string; field: string } | null>(null);
   const [editValue, setEditValue] = useState('');
 
-  if (!activeSession) return null;
+  if (!activeSession || !activeSession.parsedTasks) return null;
 
   const filteredTasks = activeSession.parsedTasks.filter(
     (t) =>
