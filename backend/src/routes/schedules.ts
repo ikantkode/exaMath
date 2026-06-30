@@ -239,7 +239,7 @@ async function snapshotVersion(sessionId: string, userId: string): Promise<numbe
   const existingVersions = await prisma.scheduleVersion.count({ where: { sessionId } });
   const versionNumber = existingVersions + 1;
 
-  const snapshot = session.parsedTasks.map((t) => ({
+  const snapshot = session.parsedTasks.map((t: any) => ({
     id: t.id,
     activityId: t.activityId,
     name: t.name,
@@ -303,7 +303,7 @@ function checkAutoVersion(sessionId: string, userId: string) {
   prisma.scheduleVersion.findFirst({
     where: { sessionId },
     orderBy: { versionNumber: 'desc' },
-  }).then((existingVersion) => {
+  }).then((existingVersion: any) => {
     const lastVersionTime = existingVersion?.createdAt;
     const fiveMinutesAgo = new Date(Date.now() - 5 * 60 * 1000);
     if (!lastVersionTime || lastVersionTime < fiveMinutesAgo) {
