@@ -57,6 +57,7 @@ model User {
   auditLogs        AuditLog[]
   expenses         Expense[]
   scheduleChats    ScheduleChat[]
+  scheduleVersions ScheduleVersion[]
 }
 
 model Project {
@@ -349,6 +350,7 @@ model ScheduleSession {
   originalXml       String
   parsedTasks       ScheduleTask[]
   chatMessages      ScheduleChat[]
+  versions          ScheduleVersion[]
   createdAt         DateTime         @default(now())
   updatedAt         DateTime         @updatedAt
 }
@@ -386,4 +388,16 @@ model ScheduleChat {
   user        User     @relation(fields: [userId], references: [id])
   message     String
   createdAt   DateTime @default(now())
+}
+
+model ScheduleVersion {
+  id                String           @id @default(uuid())
+  sessionId         String
+  session           ScheduleSession  @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  versionNumber     Int
+  description       String?
+  taskSnapshot      String
+  createdById       String
+  createdBy         User             @relation(fields: [createdById], references: [id])
+  createdAt         DateTime         @default(now())
 }

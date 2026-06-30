@@ -46,13 +46,11 @@ function getActivities(obj: any): any[] {
     return Array.isArray(activities) ? activities : activities ? [activities] : [];
   }
   if (apiObjects) {
-    // P6 Professional: APIBusinessObjects > Project > Activity
     const project = apiObjects?.Project;
     if (project) {
       const activities = project?.Activity || [];
       return Array.isArray(activities) ? activities : activities ? [activities] : [];
     }
-    // Fallback: direct children
     const activities = apiObjects?.Activity || [];
     return Array.isArray(activities) ? activities : activities ? [activities] : [];
   }
@@ -97,7 +95,7 @@ function parseMSPDI(xml: string) {
   return tasks;
 }
 
-// ─── PMXML / P6 Professional Parser (handles both PXExport and APIBusinessObjects) ──────────────────
+// ─── PMXML / P6 Professional Parser ────────────────────────────────────────
 
 function extractValue(obj: any): any {
   if (obj === null || obj === undefined) return null;
@@ -193,7 +191,7 @@ function buildMSPDI(tasks: any[], originalXml: string): string {
   return xml;
 }
 
-// ─── PMXML Builder (Round-Trip Export — handles both PXExport and APIBusinessObjects) ──────────────────
+// ─── PMXML Builder (Round-Trip Export) ─────────────────────────────────────
 
 function buildPMXML(tasks: any[], originalXml: string): string {
   const parser = new XMLParser({ ignoreAttributes: false, attributeNamePrefix: '@_' });
@@ -229,9 +227,94 @@ function buildPMXML(tasks: any[], originalXml: string): string {
   return xml;
 }
 
+// ─── Versioning helpers ──────────────────────────────────────────────────────
+
+async function snapshotVersion(sessionId: string, userId: string): Promise<number> {
+  const session = await prisma.scheduleSession.findUnique({
+    where: { id: sessionId },
+    include: { parsedTasks: true },
+  });
+  if (!session) throw new Error('Schedule not found');
+
+  const existingVersions = await prisma.scheduleVersion.count({ where: { sessionId } });
+  const versionNumber = existingVersions + 1;
+
+  const snapshot = session.parsedTasks.map((t) => ({
+    id: t.id,
+    activityId: t.activityId,
+    name: t.name,
+    startDate: t.startDate?.toISOString() || null,
+    finishDate: t.finishDate?.toISOString() || null,
+    actualStart: t.actualStart?.toISOString() || null,
+    actualFinish: t.actualFinish?.toISOString() || null,
+    remainingDuration: t.remainingDuration,
+    physicalPercentComplete: t.physicalPercentComplete,
+    status: t.status,
+    isCritical: t.isCritical,
+  }));
+
+  await prisma.scheduleVersion.create({
+    data: {
+      sessionId,
+      versionNumber,
+      taskSnapshot: JSON.stringify(snapshot),
+      createdById: userId,
+    },
+  });
+
+  return versionNumber;
+}
+
+async function restoreVersion(sessionId: string, versionNumber: number, userId: string) {
+  const version = await prisma.scheduleVersion.findFirst({
+    where: { sessionId, versionNumber },
+    include: { createdBy: { select: { name: true } } },
+  });
+  if (!version) throw new Error('Version not found');
+
+  const tasks = JSON.parse(version.taskSnapshot);
+
+  await prisma.$transaction(
+    tasks.map((t: any) =>
+      prisma.scheduleTask.update({
+        where: { id: t.id },
+        data: {
+          actualStart: t.actualStart ? new Date(t.actualStart) : null,
+          actualFinish: t.actualFinish ? new Date(t.actualFinish) : null,
+          remainingDuration: t.remainingDuration,
+          physicalPercentComplete: t.physicalPercentComplete,
+          status: t.status as any,
+        },
+      })
+    )
+  );
+
+  await logAction(userId, 'RESTORE', 'ScheduleVersion', version.id);
+
+  const session = await prisma.scheduleSession.findUnique({
+    where: { id: sessionId },
+    include: { parsedTasks: { orderBy: { activityId: 'asc' } } },
+  });
+
+  return session;
+}
+
+function checkAutoVersion(sessionId: string, userId: string) {
+  prisma.scheduleVersion.findFirst({
+    where: { sessionId },
+    orderBy: { versionNumber: 'desc' },
+  }).then((existingVersion) => {
+    const lastVersionTime = existingVersion?.createdAt;
+    const fiveMinutesAgo = new Date(Date.now() - 5 * 60 * 1000);
+    if (!lastVersionTime || lastVersionTime < fiveMinutesAgo) {
+      snapshotVersion(sessionId, userId).catch(() => {});
+    }
+  });
+}
+
 // ─── Routes ────────────────────────────────────────────────────────────────
 
-// Upload schedule XML — multer runs BEFORE auth middleware
+// Upload schedule XML
 router.post('/upload', upload.single('file'), authenticate, authorize('OWNER', 'MANAGER'), async (req: AuthRequest, res) => {
   try {
     const { name, projectId } = req.body;
@@ -325,7 +408,51 @@ router.get('/:id', authenticate, async (req: AuthRequest, res) => {
   }
 });
 
-// Update task progress (Delta)
+// List versions for a session
+router.get('/:id/versions', authenticate, async (req: AuthRequest, res) => {
+  try {
+    const versions = await prisma.scheduleVersion.findMany({
+      where: { sessionId: req.params.id },
+      include: { createdBy: { select: { name: true } } },
+      orderBy: { versionNumber: 'asc' },
+    });
+    res.json(versions);
+  } catch {
+    res.status(500).json({ error: 'Failed to fetch versions' });
+  }
+});
+
+// Create a manual version snapshot
+router.post('/:id/versions', authenticate, async (req: AuthRequest, res) => {
+  try {
+    const versionNumber = await snapshotVersion(req.params.id, req.user!.id);
+    await logAction(req.user!.id, 'CREATE_VERSION', 'ScheduleVersion', req.params.id);
+    res.status(201).json({
+      message: `Version ${versionNumber} created`,
+      versionNumber,
+    });
+  } catch (e: any) {
+    if (e.message === 'Schedule not found') return res.status(404).json({ error: 'Schedule not found' });
+    res.status(500).json({ error: e.message || 'Failed to create version' });
+  }
+});
+
+// Restore a specific version
+router.post('/:id/versions/:versionNumber/restore', authenticate, async (req: AuthRequest, res) => {
+  try {
+    const versionNumber = parseInt(req.params.versionNumber, 10);
+    const session = await restoreVersion(req.params.id, versionNumber, req.user!.id);
+    if (!session) return res.status(404).json({ error: 'Version not found' });
+    res.json(session);
+  } catch (e: any) {
+    if (e.message === 'Schedule not found' || e.message === 'Version not found') {
+      return res.status(404).json({ error: e.message });
+    }
+    res.status(500).json({ error: e.message || 'Failed to restore version' });
+  }
+});
+
+// Update task progress (with auto-version)
 router.put('/:id/tasks/:taskId', authenticate, async (req: AuthRequest, res) => {
   try {
     const { actualStart, actualFinish, remainingDuration, physicalPercentComplete, status } = req.body;
@@ -341,6 +468,8 @@ router.put('/:id/tasks/:taskId', authenticate, async (req: AuthRequest, res) => 
       updates.status = statusFromPercent(physicalPercentComplete);
     }
 
+    checkAutoVersion(req.params.id, req.user!.id);
+
     const task = await prisma.scheduleTask.update({
       where: { id: req.params.taskId },
       data: updates,
@@ -354,11 +483,13 @@ router.put('/:id/tasks/:taskId', authenticate, async (req: AuthRequest, res) => 
   }
 });
 
-// Update multiple tasks at once
+// Update multiple tasks at once (with auto-version)
 router.put('/:id/tasks/batch', authenticate, async (req: AuthRequest, res) => {
   try {
     const { updates } = req.body;
     if (!Array.isArray(updates)) return res.status(400).json({ error: 'updates array required' });
+
+    checkAutoVersion(req.params.id, req.user!.id);
 
     const results = await Promise.all(
       updates.map(async (u: any) => {

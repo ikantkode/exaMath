@@ -39,6 +39,7 @@ const Layout = () => {
     { label: 'Dashboard', path: '/dashboard', icon: LayoutDashboard },
     { label: 'Projects', path: '/projects', icon: FolderKanban },
     { label: 'Schedule', path: '/schedule', icon: Calendar, roles: ['OWNER', 'MANAGER'] },
+    { label: 'Manage Schedules', path: '/schedule/manage', icon: FileText, roles: ['OWNER', 'MANAGER'] },
     { label: 'Employees', path: '/employees', icon: HardHat, roles: ['OWNER', 'MANAGER'] },
     { label: 'Office Payroll', path: '/accounting/office-payroll', icon: FileText, roles: ['OWNER', 'MANAGER'] },
     { label: 'Fixed Assets', path: '/accounting/fixed-assets', icon: Truck, roles: ['OWNER', 'MANAGER'] },

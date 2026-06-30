@@ -26,8 +26,20 @@ export interface ScheduleSession {
   projectId: string | null;
   parsedTasks: ScheduleTask[];
   chatMessages?: ChatMessage[];
+  versions?: ScheduleVersion[];
   createdAt: string;
   updatedAt: string;
+}
+
+export interface ScheduleVersion {
+  id: string;
+  sessionId: string;
+  versionNumber: number;
+  description: string | null;
+  taskSnapshot: string;
+  createdById: string;
+  createdBy: { name: string };
+  createdAt: string;
 }
 
 export interface ChatMessage {
@@ -60,6 +72,9 @@ interface ScheduleState {
   deleteSession: (id: string) => Promise<void>;
   setSelectedTask: (id: string | null) => void;
   clearError: () => void;
+  fetchVersions: (sessionId: string) => Promise<void>;
+  createVersion: (sessionId: string, description?: string) => Promise<void>;
+  restoreVersion: (sessionId: string, versionNumber: number) => Promise<void>;
 }
 
 export const useScheduleStore = create<ScheduleState>((set, get) => ({
@@ -192,4 +207,63 @@ export const useScheduleStore = create<ScheduleState>((set, get) => ({
 
   setSelectedTask: (id: string | null) => set({ selectedTaskId: id }),
   clearError: () => set({ error: null }),
+
+  fetchVersions: async (sessionId: string) => {
+    try {
+      const versions = await api.get<ScheduleVersion[]>(`/schedules/${sessionId}/versions`);
+      const session = get().sessions.find((s) => s.id === sessionId);
+      if (session) {
+        set({
+          sessions: get().sessions.map((s) =>
+            s.id === sessionId ? { ...s, versions } : s
+          ),
+        });
+      }
+      if (get().activeSession?.id === sessionId) {
+        set({
+          activeSession: { ...get().activeSession!, versions },
+        });
+      }
+    } catch (e: any) {
+      set({ error: e.message });
+    }
+  },
+
+  createVersion: async (sessionId: string, description?: string) => {
+    set({ loading: true, error: null });
+    try {
+      await api.post(`/schedules/${sessionId}/versions`, { description });
+      await get().fetchVersions(sessionId);
+      const session = get().activeSession;
+      if (session?.id === sessionId) {
+        await get().loadSession(sessionId);
+      }
+    } catch (e: any) {
+      set({ error: e.message });
+      throw e;
+    } finally {
+      set({ loading: false });
+    }
+  },
+
+  restoreVersion: async (sessionId: string, versionNumber: number) => {
+    set({ loading: true, error: null });
+    try {
+      const restored = await api.post<ScheduleSession>(
+        `/schedules/${sessionId}/versions/${versionNumber}/restore`,
+        {}
+      );
+      set({
+        activeSession: restored,
+        sessions: get().sessions.map((s) =>
+          s.id === sessionId ? { ...s, parsedTasks: restored.parsedTasks } : s
+        ),
+      });
+    } catch (e: any) {
+      set({ error: e.message });
+      throw e;
+    } finally {
+      set({ loading: false });
+    }
+  },
 }));

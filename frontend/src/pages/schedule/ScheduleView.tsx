@@ -14,6 +14,7 @@ import {
   TabsList,
   TabsTrigger,
 } from '@/components/ui/tabs';
+import { Badge } from '@/components/ui/badge';
 import {
   Table,
   BarChart3,
@@ -23,6 +24,8 @@ import {
   Loader2,
   Plus,
   Trash2,
+  History,
+  RotateCcw,
 } from 'lucide-react';
 import {
   Dialog,
@@ -38,13 +41,48 @@ import { formatDate } from '@/utils/api';
 export default function ScheduleView() {
   const { user } = useAuth();
   const navigate = useNavigate();
-  const { sessions, activeSession, loading, fetchSessions, exportSchedule, deleteSession, setSelectedTask, loadSession } = useScheduleStore();
+  const { sessions, activeSession, loading, fetchSessions, exportSchedule, deleteSession, setSelectedTask, loadSession, createVersion, restoreVersion, fetchVersions } = useScheduleStore();
   const [activeTab, setActiveTab] = useState('list');
   const [showDeleteConfirm, setShowDeleteConfirm] = useState<string | null>(null);
+  const [showVersions, setShowVersions] = useState(false);
+  const [versions, setVersions] = useState<any[]>([]);
+  const [restoreVersionNumber, setRestoreVersionNumber] = useState<number | null>(null);
 
   useEffect(() => {
     fetchSessions();
   }, [fetchSessions]);
+
+  useEffect(() => {
+    if (activeSession) {
+      const data = (window as any).api.get(`/schedules/${activeSession.id}/versions`)
+        .then((d: any) => setVersions(d))
+        .catch(() => setVersions([]));
+      return () => { if (data) (data as Promise<void>).catch(() => {}); };
+    }
+    setVersions([]);
+  }, [activeSession?.id]);
+
+  const handleCreateVersion = async () => {
+    if (!activeSession) return;
+    try {
+      await createVersion(activeSession.id);
+      toast.success('Version saved');
+    } catch (e: any) {
+      toast.error(e.message);
+    }
+  };
+
+  const handleRestoreVersion = async (versionNumber: number) => {
+    if (!activeSession) return;
+    try {
+      await restoreVersion(activeSession.id, versionNumber);
+      toast.success(`Restored to Version ${versionNumber}`);
+      setShowVersions(false);
+      setRestoreVersionNumber(null);
+    } catch (e: any) {
+      toast.error(e.message);
+    }
+  };
 
   const handleExport = async () => {
     if (!activeSession) return;
@@ -88,6 +126,10 @@ export default function ScheduleView() {
               <Button variant="outline" onClick={() => handleNewUpload()}>
                 <Plus className="mr-2 h-4 w-4" />
                 New Upload
+              </Button>
+              <Button variant="outline" onClick={handleCreateVersion}>
+                <History className="mr-2 h-4 w-4" />
+                Save Version
               </Button>
               {user?.role === 'OWNER' && activeSession.parsedTasks.length > 0 && (
                 <Button variant="outline" onClick={() => setShowDeleteConfirm(activeSession.id)}>
@@ -152,6 +194,10 @@ export default function ScheduleView() {
                 <MessageSquare className="mr-2 h-4 w-4" />
                 Chat
               </TabsTrigger>
+              <TabsTrigger value="versions">
+                <History className="mr-2 h-4 w-4" />
+                Versions
+              </TabsTrigger>
             </TabsList>
 
             <TabsContent value="list" className="mt-4">
@@ -165,6 +211,65 @@ export default function ScheduleView() {
             </TabsContent>
             <TabsContent value="chat" className="mt-4">
               <ScheduleChat />
+            </TabsContent>
+            <TabsContent value="versions" className="mt-4">
+              <div className="space-y-4">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <h3 className="text-lg font-semibold">Version History</h3>
+                    <p className="text-sm text-muted-foreground">
+                      All saved versions of this schedule. Versions are automatically created every 5 minutes of activity.
+                    </p>
+                  </div>
+                </div>
+                {versions.length === 0 ? (
+                  <div className="rounded-lg border p-8 text-center text-muted-foreground">
+                    <History className="h-12 w-12 mx-auto mb-3 text-muted-foreground/40" />
+                    <p className="text-sm">No versions saved yet</p>
+                    <p className="text-xs text-muted-foreground mt-1">
+                      Click "Save Version" to create your first version snapshot.
+                    </p>
+                  </div>
+                ) : (
+                  <div className="space-y-2">
+                    {versions.map((v) => (
+                      <div
+                        key={v.id}
+                        className="flex items-center justify-between rounded-lg border p-4"
+                      >
+                        <div className="flex items-center gap-4">
+                          <div className="flex items-center justify-center w-10 h-10 rounded-full bg-primary/10 text-primary text-sm font-bold">
+                            {v.versionNumber}
+                          </div>
+                          <div>
+                            <p className="font-medium">Version {v.versionNumber}</p>
+                            <p className="text-xs text-muted-foreground">
+                              Saved by {v.createdBy.name} on{' '}
+                              {new Date(v.createdAt).toLocaleDateString()} at{' '}
+                              {new Date(v.createdAt).toLocaleTimeString()}
+                            </p>
+                          </div>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <Badge variant="outline">
+                            {JSON.parse(v.taskSnapshot || '[]').length} tasks
+                          </Badge>
+                          {v.versionNumber !== Math.max(...versions.map((ver) => ver.versionNumber)) && (
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() => setRestoreVersionNumber(v.versionNumber)}
+                            >
+                              <RotateCcw className="mr-1 h-3 w-3" />
+                              Restore
+                            </Button>
+                          )}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
             </TabsContent>
           </Tabs>
         </>
@@ -193,6 +298,38 @@ export default function ScheduleView() {
             </Button>
             <Button variant="destructive" onClick={() => showDeleteConfirm && handleDelete(showDeleteConfirm)}>
               Delete
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Restore version confirmation */}
+      <Dialog open={!!restoreVersionNumber} onOpenChange={(open) => !open && setRestoreVersionNumber(null)}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Restore Version {restoreVersionNumber}</DialogTitle>
+            <DialogDescription>
+              This will restore all tasks to their state in Version {restoreVersionNumber}.
+              Current changes will be replaced. Consider saving a version first to preserve
+              your current state.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setRestoreVersionNumber(null)}>
+              Cancel
+            </Button>
+            <Button variant="destructive" onClick={() => restoreVersionNumber !== null && handleRestoreVersion(restoreVersionNumber)}>
+              {loading ? (
+                <>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  Restoring...
+                </>
+              ) : (
+                <>
+                  <RotateCcw className="mr-2 h-4 w-4" />
+                  Restore Version {restoreVersionNumber}
+                </>
+              )}
             </Button>
           </DialogFooter>
         </DialogContent>
