@@ -165,7 +165,7 @@ export default function ScheduleView() {
         </div>
       )}
 
-      {activeSession ? (
+      {activeSession && activeSession.parsedTasks && activeSession.parsedTasks.length > 0 ? (
         <>
           {/* Tabs */}
           <Tabs value={activeTab} onValueChange={setActiveTab}>

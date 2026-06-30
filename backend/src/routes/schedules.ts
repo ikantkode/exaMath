@@ -385,7 +385,8 @@ router.get('/', authenticate, async (_req: AuthRequest, res) => {
       include: { parsedTasks: { orderBy: { activityId: 'asc' } } },
       orderBy: { createdAt: 'desc' },
     });
-    res.json(sessions);
+    const normalized = sessions.map((s) => ({ ...s, parsedTasks: s.parsedTasks || [] }));
+    res.json(normalized);
   } catch {
     res.status(500).json({ error: 'Failed to fetch schedules' });
   }
@@ -397,12 +398,12 @@ router.get('/:id', authenticate, async (req: AuthRequest, res) => {
     const session = await prisma.scheduleSession.findUnique({
       where: { id: req.params.id },
       include: {
-        parsedTasks: { orderBy: { activityId: 'asc' } },
+        parsedTasks: true,
         chatMessages: { include: { user: { select: { name: true } } }, orderBy: { createdAt: 'asc' } },
       },
     });
     if (!session) return res.status(404).json({ error: 'Schedule not found' });
-    res.json(session);
+    res.json({ ...session, parsedTasks: session.parsedTasks || [] });
   } catch {
     res.status(500).json({ error: 'Failed to fetch schedule' });
   }

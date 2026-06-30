@@ -47,7 +47,7 @@ import {
 } from 'lucide-react';
 
 function hasStartedTasks(session: ScheduleSession): ScheduleTask[] {
-  return session.parsedTasks.filter((t) => t.actualStart !== null);
+  return (session.parsedTasks || []).filter((t) => t.actualStart !== null);
 }
 
 export default function ManageSchedules() {
@@ -178,7 +178,7 @@ export default function ManageSchedules() {
     return hasStartedTasks(session).length;
   };
 
-  if (activeSession) {
+  if (activeSession && activeSession.parsedTasks && activeSession.parsedTasks.length > 0) {
     return <ScheduleView />;
   }
 
