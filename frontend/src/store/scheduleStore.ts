@@ -91,7 +91,8 @@ export const useScheduleStore = create<ScheduleState>((set, get) => ({
     set({ loading: true, error: null });
     try {
       const sessions = await api.get<ScheduleSession[]>('/schedules');
-      set({ sessions, loading: false });
+      const normalized = sessions.map((s) => ({ ...s, parsedTasks: s.parsedTasks || [] }));
+      set({ sessions: normalized, loading: false });
     } catch (e: any) {
       set({ error: e.message, loading: false });
     }
@@ -101,7 +102,7 @@ export const useScheduleStore = create<ScheduleState>((set, get) => ({
     set({ loading: true, error: null, selectedTaskId: null });
     try {
       const session = await api.get<ScheduleSession & { chatMessages: ChatMessage[] }>(`/schedules/${id}`);
-      set({ activeSession: session, chatMessages: session.chatMessages || [], loading: false });
+      set({ activeSession: session ? { ...session, parsedTasks: session.parsedTasks || [] } : null, chatMessages: session?.chatMessages || [], loading: false });
     } catch (e: any) {
       set({ error: e.message, loading: false });
     }
@@ -290,7 +291,7 @@ export const useScheduleStore = create<ScheduleState>((set, get) => ({
       set({
         activeSession: restored,
         sessions: get().sessions.map((s) =>
-          s.id === sessionId ? { ...s, parsedTasks: restored.parsedTasks } : s
+          s.id === sessionId ? { ...s, parsedTasks: restored.parsedTasks || [] } : s
         ),
       });
     } catch (e: any) {
