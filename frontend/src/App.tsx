@@ -89,9 +89,8 @@ const AppRoutes = () => (
              </ProtectedRoute>
            }
          />
-         <Route path="schedule" element={<ScheduleView />} />
-          <Route path="schedule/manage" element={<ManageSchedules />} />
-          <Route path="schedule/upload" element={<ScheduleUpload onUpload={() => {}} />} />
+         <Route path="schedule" element={<ManageSchedules />} />
+           <Route path="schedule/upload" element={<ScheduleUpload onUpload={() => {}} />} />
      </Route>
     <Route path="*" element={<Navigate to="/login" replace />} />
   </Routes>
