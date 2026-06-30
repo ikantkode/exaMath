@@ -402,7 +402,7 @@ export default function ManageSchedules() {
             </AlertDialogTitle>
             <AlertDialogDescription className="space-y-3">
               <p>
-                This schedule has <strong>{getStartedTaskCount(showStartedTasksWarning!.sessionId)} tasks</strong> that have been started with actual start dates.
+                This schedule has <strong>{getStartedTaskCount(showStartedTasksWarning?.sessionId ?? '')} tasks</strong> that have been started with actual start dates.
               </p>
               {showStartedTasksWarning?.type === 'delete' ? (
                 <p>
@@ -431,9 +431,9 @@ export default function ManageSchedules() {
               {showStartedTasksWarning?.type === 'delete' ? 'Delete Anyway' : 'Import Anyway'}
             </AlertDialogCancel>
             <AlertDialogAction onClick={() => {
-              setShowStartedTasksWarning(null);
               if (showStartedTasksWarning) {
                 openVersions(showStartedTasksWarning.sessionId);
+                setShowStartedTasksWarning(null);
               }
             }}>
               <History className="mr-2 h-4 w-4" />
