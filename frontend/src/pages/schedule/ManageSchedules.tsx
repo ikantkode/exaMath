@@ -31,7 +31,7 @@ import {
 
 export default function ManageSchedules() {
   const navigate = useNavigate();
-  const { sessions, fetchSessions, deleteSession, fetchVersions, restoreVersion, loading } = useScheduleStore();
+  const { sessions, fetchSessions, deleteSession, restoreVersion, loading } = useScheduleStore();
   const [showDeleteConfirm, setShowDeleteConfirm] = useState<string | null>(null);
   const [showVersions, setShowVersions] = useState<string | null>(null);
   const [versions, setVersions] = useState<ScheduleVersion[]>([]);
