@@ -19,7 +19,7 @@ export default function ScheduleGantt() {
   const [viewStart, setViewStart] = useState(new Date());
   const scrollRef = useRef<HTMLDivElement>(null);
 
-  if (!activeSession) return null;
+  if (!activeSession || !activeSession.parsedTasks) return null;
 
   const tasks = activeSession.parsedTasks.filter((t) => t.startDate || t.finishDate);
   if (tasks.length === 0) return null;

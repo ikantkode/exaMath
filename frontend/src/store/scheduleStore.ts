@@ -289,9 +289,9 @@ export const useScheduleStore = create<ScheduleState>((set, get) => ({
         {}
       );
       set({
-        activeSession: restored,
+        activeSession: restored ? { ...restored, parsedTasks: restored.parsedTasks || [] } : null,
         sessions: get().sessions.map((s) =>
-          s.id === sessionId ? { ...s, parsedTasks: restored.parsedTasks || [] } : s
+          s.id === sessionId ? { ...s, parsedTasks: restored?.parsedTasks || [] } : s
         ),
       });
     } catch (e: any) {

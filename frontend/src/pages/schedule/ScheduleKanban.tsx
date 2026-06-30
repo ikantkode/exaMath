@@ -17,7 +17,7 @@ export default function ScheduleKanban() {
   const { activeSession, updateTasksBatch } = useScheduleStore();
   const [dragging, setDragging] = useState<string | null>(null);
 
-  if (!activeSession) return null;
+  if (!activeSession || !activeSession.parsedTasks) return null;
 
   const handleDragStart = (taskId: string) => setDragging(taskId);
   const handleDragEnd = () => setDragging(null);

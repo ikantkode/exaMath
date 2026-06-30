@@ -236,7 +236,7 @@ export default function ScheduleView() {
                           <div>
                             <p className="font-medium">Version {v.versionNumber}</p>
                             <p className="text-xs text-muted-foreground">
-                              Saved by {v.createdBy.name} on{' '}
+                              Saved by {v.createdBy?.name || 'Unknown'} on{' '}
                               {new Date(v.createdAt).toLocaleDateString()} at{' '}
                               {new Date(v.createdAt).toLocaleTimeString()}
                             </p>
