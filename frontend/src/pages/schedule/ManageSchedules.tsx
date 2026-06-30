@@ -46,7 +46,7 @@ import {
   AlertTriangle,
 } from 'lucide-react';
 
-function hasStartedTasks(session: ScheduleSession): ScheduleTask[] {
+function hasStartedTasks // fix-v2(session: ScheduleSession): ScheduleTask[] {
   return (session.parsedTasks || []).filter((t) => t.actualStart !== null);
 }
 
