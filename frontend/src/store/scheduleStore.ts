@@ -64,6 +64,8 @@ interface ScheduleState {
   fetchSessions: () => Promise<void>;
   loadSession: (id: string) => Promise<void>;
   uploadSchedule: (file: File, name?: string, projectId?: string) => Promise<void>;
+  renameSession: (id: string, name: string) => Promise<void>;
+  importNewXml: (id: string, file: File) => Promise<void>;
   updateTask: (taskId: string, updates: Partial<ScheduleTask>) => Promise<void>;
   updateTasksBatch: (updates: ({ id: string } & Partial<ScheduleTask>)[]) => Promise<void>;
   exportSchedule: (sessionId: string) => Promise<void>;
@@ -102,6 +104,38 @@ export const useScheduleStore = create<ScheduleState>((set, get) => ({
       set({ activeSession: session, chatMessages: session.chatMessages || [], loading: false });
     } catch (e: any) {
       set({ error: e.message, loading: false });
+    }
+  },
+
+  renameSession: async (id: string, name: string) => {
+    set({ loading: true, error: null });
+    try {
+      const updated = await api.patch<ScheduleSession>(`/schedules/${id}`, { name });
+      set({
+        sessions: get().sessions.map((s) => (s.id === id ? { ...s, name } : s)),
+        activeSession: get().activeSession?.id === id ? { ...get().activeSession!, name } : get().activeSession,
+        loading: false,
+      });
+    } catch (e: any) {
+      set({ error: e.message, loading: false });
+      throw e;
+    }
+  },
+
+  importNewXml: async (id: string, file: File) => {
+    set({ loading: true, error: null });
+    try {
+      const formData = new FormData();
+      formData.append('file', file);
+      const result = await api.post<ScheduleSession>(`/schedules/${id}/import`, formData);
+      set({
+        sessions: get().sessions.map((s) => (s.id === id ? result : s)),
+        activeSession: get().activeSession?.id === id ? result : get().activeSession,
+        loading: false,
+      });
+    } catch (e: any) {
+      set({ error: e.message, loading: false });
+      throw e;
     }
   },
 

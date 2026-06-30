@@ -574,6 +574,105 @@ router.get('/:id/chat', authenticate, async (req: AuthRequest, res) => {
   }
 });
 
+// Rename schedule
+router.patch('/:id', authenticate, authorize('OWNER', 'MANAGER'), async (req: AuthRequest, res) => {
+  try {
+    const { name } = req.body;
+    if (!name || !name.trim()) return res.status(400).json({ error: 'Name is required' });
+
+    const session = await prisma.scheduleSession.update({
+      where: { id: req.params.id },
+      data: { name: name.trim() },
+    });
+
+    await logAction(req.user!.id, 'UPDATE', 'ScheduleSession', session.id);
+    res.json(session);
+  } catch (e: any) {
+    if (e.code === 'P2025') return res.status(404).json({ error: 'Schedule not found' });
+    res.status(500).json({ error: e.message || 'Failed to rename schedule' });
+  }
+});
+
+// Import new XML into existing session (replaces schedule)
+router.post('/:id/import', upload.single('file'), authenticate, authorize('OWNER', 'MANAGER'), async (req: AuthRequest, res) => {
+  try {
+    const file = (req as any).file;
+    if (!file || !file.buffer) {
+      return res.status(400).json({ error: 'XML file is required' });
+    }
+
+    const session = await prisma.scheduleSession.findUnique({
+      where: { id: req.params.id },
+      include: { parsedTasks: true },
+    });
+    if (!session) return res.status(404).json({ error: 'Schedule not found' });
+
+    // Check for started tasks before replacement
+    const startedTasks = session.parsedTasks.filter((t: any) => t.actualStart);
+    if (startedTasks.length > 0) {
+      return res.status(409).json({
+        error: 'Cannot import new schedule while tasks have started. Please restore to a baseline version first.',
+        startedTaskCount: startedTasks.length,
+        startedTaskIds: startedTasks.map((t: any) => t.activityId),
+      });
+    }
+
+    const xml = file.buffer.toString('utf-8');
+    const format = detectFormat(xml);
+
+    let tasks: any[] = [];
+    try {
+      if (format === 'MSPDI') {
+        tasks = parseMSPDI(xml);
+      } else {
+        tasks = parsePMXML(xml);
+      }
+    } catch (parseError: any) {
+      return res.status(400).json({ error: `Failed to parse schedule: ${parseError.message}` });
+    }
+
+    // Snapshot current state before replacing
+    const currentVersion = await snapshotVersion(req.params.id, req.user!.id);
+
+    // Delete old tasks and create new ones
+    await prisma.$transaction([
+      prisma.scheduleTask.deleteMany({ where: { sessionId: req.params.id } }),
+      prisma.scheduleSession.update({
+        where: { id: req.params.id },
+        data: {
+          originalXml: xml,
+          format,
+          parsedTasks: {
+            create: tasks.map((t) => ({
+              activityId: t.activityId,
+              name: t.name,
+              startDate: t.startDate,
+              finishDate: t.finishDate,
+              actualStart: t.actualStart,
+              actualFinish: t.actualFinish,
+              remainingDuration: t.remainingDuration,
+              physicalPercentComplete: t.physicalPercentComplete,
+              status: t.status as any,
+              isCritical: t.isCritical,
+            })),
+          },
+        },
+      }),
+    ]);
+
+    const updated = await prisma.scheduleSession.findUnique({
+      where: { id: req.params.id },
+      include: { parsedTasks: { orderBy: { activityId: 'asc' } } },
+    });
+
+    await logAction(req.user!.id, 'IMPORT', 'ScheduleSession', req.params.id);
+    res.json({ ...updated, message: `Schedule imported. Saved as Version ${currentVersion}.` });
+  } catch (e: any) {
+    console.error('Import error:', e.message);
+    res.status(500).json({ error: e.message || 'Failed to import schedule' });
+  }
+});
+
 // Delete schedule
 router.delete('/:id', authenticate, authorize('OWNER'), async (req: AuthRequest, res) => {
   try {

@@ -21,6 +21,7 @@ import Employees from './pages/employees/Employees';
 import FieldWorkers from './pages/fieldWorkers/FieldWorkers';
 import ScheduleView from './pages/schedule/ScheduleView';
 import ScheduleUpload from './pages/schedule/ScheduleUpload';
+import ManageSchedules from './pages/schedule/ManageSchedules';
 import { Toaster } from './components/ui/toast';
 
 const ProtectedRoute = ({ children, roles }: { children: React.ReactNode; roles?: string[] }) => {
@@ -89,7 +90,8 @@ const AppRoutes = () => (
            }
          />
          <Route path="schedule" element={<ScheduleView />} />
-         <Route path="schedule/upload" element={<ScheduleUpload onUpload={() => {}} />} />
+          <Route path="schedule/manage" element={<ManageSchedules />} />
+          <Route path="schedule/upload" element={<ScheduleUpload onUpload={() => {}} />} />
      </Route>
     <Route path="*" element={<Navigate to="/login" replace />} />
   </Routes>

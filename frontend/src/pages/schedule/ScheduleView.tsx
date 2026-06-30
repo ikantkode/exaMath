@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useAuth } from '@/context/AuthContext';
 import { useScheduleStore } from '@/store/scheduleStore';
 import ScheduleUpload from './ScheduleUpload';
@@ -41,11 +41,11 @@ import { formatDate } from '@/utils/api';
 export default function ScheduleView() {
   const { user } = useAuth();
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
   const { sessions, activeSession, loading, fetchSessions, exportSchedule, deleteSession, setSelectedTask, loadSession, createVersion, restoreVersion, fetchVersions } = useScheduleStore();
   const [activeTab, setActiveTab] = useState('list');
   const [showDeleteConfirm, setShowDeleteConfirm] = useState<string | null>(null);
   const [showVersions, setShowVersions] = useState(false);
-  const [versions, setVersions] = useState<any[]>([]);
   const [restoreVersionNumber, setRestoreVersionNumber] = useState<number | null>(null);
 
   useEffect(() => {
@@ -53,13 +53,17 @@ export default function ScheduleView() {
   }, [fetchSessions]);
 
   useEffect(() => {
-    if (activeSession) {
-      const data = (window as any).api.get(`/schedules/${activeSession.id}/versions`)
-        .then((d: any) => setVersions(d))
-        .catch(() => setVersions([]));
-      return () => { if (data) (data as Promise<void>).catch(() => {}); };
+    const sessionId = searchParams.get('session');
+    if (sessionId && !activeSession) {
+      loadSession(sessionId);
+      navigate('/schedule', { replace: true });
     }
-    setVersions([]);
+  }, []);
+
+  useEffect(() => {
+    if (activeSession) {
+      fetchVersions(activeSession.id);
+    }
   }, [activeSession?.id]);
 
   const handleCreateVersion = async () => {
@@ -222,7 +226,7 @@ export default function ScheduleView() {
                     </p>
                   </div>
                 </div>
-                {versions.length === 0 ? (
+                {(!activeSession?.versions || activeSession.versions.length === 0) ? (
                   <div className="rounded-lg border p-8 text-center text-muted-foreground">
                     <History className="h-12 w-12 mx-auto mb-3 text-muted-foreground/40" />
                     <p className="text-sm">No versions saved yet</p>
@@ -232,7 +236,7 @@ export default function ScheduleView() {
                   </div>
                 ) : (
                   <div className="space-y-2">
-                    {versions.map((v) => (
+                    {(activeSession?.versions ?? []).map((v) => (
                       <div
                         key={v.id}
                         className="flex items-center justify-between rounded-lg border p-4"
@@ -254,7 +258,7 @@ export default function ScheduleView() {
                           <Badge variant="outline">
                             {JSON.parse(v.taskSnapshot || '[]').length} tasks
                           </Badge>
-                          {v.versionNumber !== Math.max(...versions.map((ver) => ver.versionNumber)) && (
+                          {v.versionNumber !== Math.max(...(activeSession?.versions ?? []).map((ver) => ver.versionNumber)) && (
                             <Button
                               variant="outline"
                               size="sm"
