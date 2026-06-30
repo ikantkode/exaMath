@@ -17,6 +17,7 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog';
 import { Badge } from '@/components/ui/badge';
+import { api } from '@/utils/api';
 import { toast } from 'sonner';
 import {
   MoreHorizontal,
@@ -70,7 +71,7 @@ export default function ManageSchedules() {
   const openVersions = async (sessionId: string) => {
     setShowVersions(sessionId);
     try {
-      const data = await (window as any).api.get<ScheduleVersion[]>(`/schedules/${sessionId}/versions`);
+      const data = await api.get<ScheduleVersion[]>(`/schedules/${sessionId}/versions`);
       setVersions(data);
     } catch (e: any) {
       toast.error(e.message);
@@ -137,7 +138,7 @@ export default function ManageSchedules() {
                   </td>
                   <td className="p-4">
                     <DropdownMenu>
-                      <DropdownMenuTrigger asChild>
+                      <DropdownMenuTrigger>
                         <Button variant="ghost" size="icon" className="h-8 w-8">
                           <MoreHorizontal className="h-4 w-4" />
                         </Button>
