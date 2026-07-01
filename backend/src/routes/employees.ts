@@ -14,15 +14,11 @@ router.get('/', authenticate, async (_req: AuthRequest, res) => {
 
 router.post('/', authenticate, authorize('OWNER', 'MANAGER'), async (req: AuthRequest, res) => {
   try {
-    const { name, address, phone, email, compensationType, salary, bonus, deductions, taxes, isUnion, dependents, notes } = req.body;
+    const { name, address, phone, email, compensationType, isUnion, dependents, notes } = req.body;
     if (!name || !compensationType) return res.status(400).json({ error: 'Name and compensation type are required' });
     const employee = await prisma.employee.create({
       data: {
         name, address, phone, email, compensationType,
-        salary: salary ? parseFloat(salary) : null,
-        bonus: bonus ? parseFloat(bonus) : 0,
-        deductions: deductions ? parseFloat(deductions) : 0,
-        taxes: taxes ? parseFloat(taxes) : 0,
         isUnion: !!isUnion,
         dependents: dependents ? parseInt(dependents) : 0,
         notes: notes || null,
@@ -38,16 +34,12 @@ router.put('/:id', authenticate, authorize('OWNER', 'MANAGER'), async (req: Auth
     const { id } = req.params;
     const employee = await prisma.employee.findUnique({ where: { id } });
     if (!employee) return res.status(404).json({ error: 'Employee not found' });
-    const { name, salary, bonus, deductions, taxes, dependents, notes, compensationType, address, phone, email, isUnion } = req.body;
+    const { name, compensationType, address, phone, email, isUnion, dependents, notes } = req.body;
     const updated = await prisma.employee.update({
       where: { id },
       data: {
         ...(name !== undefined && { name }),
         ...(compensationType !== undefined && { compensationType }),
-        ...(salary !== undefined && { salary: salary ? parseFloat(salary) : null }),
-        ...(bonus !== undefined && { bonus: bonus ? parseFloat(bonus) : 0 }),
-        ...(deductions !== undefined && { deductions: deductions ? parseFloat(deductions) : 0 }),
-        ...(taxes !== undefined && { taxes: taxes ? parseFloat(taxes) : 0 }),
         ...(typeof isUnion !== 'undefined' && { isUnion: !!isUnion }),
         ...(dependents !== undefined && { dependents: dependents ? parseInt(dependents) : 0 }),
         ...(notes !== undefined && { notes: notes || null }),

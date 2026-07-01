@@ -21,10 +21,6 @@ interface Employee {
   phone?: string;
   email?: string;
   compensationType: string;
-  salary?: number | null;
-  bonus: number;
-  deductions: number;
-  taxes: number;
   isUnion: boolean;
   dependents: number;
   notes?: string | null;
@@ -39,7 +35,7 @@ const Employees = () => {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [formData, setFormData] = useState({
     name: '', address: '', phone: '', email: '',
-    compensationType: 'W2', salary: '', bonus: '0', deductions: '0', taxes: '0',
+    compensationType: 'W2',
     isUnion: false, dependents: '0', notes: '',
   });
 
@@ -52,26 +48,22 @@ const Employees = () => {
   const openAdd = () => {
     setModalMode('add');
     setEditingId(null);
-    setFormData({ name: '', address: '', phone: '', email: '', compensationType: 'W2', salary: '', bonus: '0', deductions: '0', taxes: '0', isUnion: false, dependents: '0', notes: '' });
+    setFormData({ name: '', address: '', phone: '', email: '', compensationType: 'W2', isUnion: false, dependents: '0', notes: '' });
   };
 
   const openEdit = (emp: Employee) => {
     setModalMode('edit');
     setEditingId(emp.id);
-    setFormData({
-      name: emp.name,
-      address: emp.address || '',
-      phone: emp.phone || '',
-      email: emp.email || '',
-      compensationType: emp.compensationType,
-      salary: emp.salary != null ? String(emp.salary) : '',
-      bonus: String(emp.bonus),
-      deductions: String(emp.deductions),
-      taxes: String(emp.taxes),
-      isUnion: emp.isUnion,
-      dependents: String(emp.dependents),
-      notes: emp.notes || '',
-    });
+     setFormData({
+        name: emp.name,
+        address: emp.address || '',
+        phone: emp.phone || '',
+        email: emp.email || '',
+        compensationType: emp.compensationType,
+        isUnion: emp.isUnion,
+        dependents: String(emp.dependents),
+        notes: emp.notes || '',
+      });
   };
 
   const closeModal = () => {
@@ -84,10 +76,6 @@ const Employees = () => {
     try {
       const body = {
         ...formData,
-        salary: formData.salary ? parseFloat(formData.salary) : null,
-        bonus: formData.bonus ? parseFloat(formData.bonus) : 0,
-        deductions: formData.deductions ? parseFloat(formData.deductions) : 0,
-        taxes: formData.taxes ? parseFloat(formData.taxes) : 0,
         dependents: formData.dependents ? parseInt(formData.dependents) : 0,
         notes: formData.notes || null,
       };
@@ -112,7 +100,7 @@ const Employees = () => {
     } catch (err: any) { toast.error(err.message || 'Failed to delete employee'); }
   };
 
-  const totalSalary = employees.reduce((sum, e) => sum + (e.salary || 0), 0);
+  const unionCount = employees.filter(e => e.isUnion).length;
 
   if (loading) return (
     <div className="flex items-center justify-center h-64">
@@ -147,18 +135,6 @@ const Employees = () => {
         </Card>
         <Card>
           <CardHeader className="pb-2">
-            <CardDescription>Monthly Salary</CardDescription>
-            <CardTitle className="text-2xl font-semibold tabular-nums">{formatCurrency(totalSalary)}</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <Separator />
-            <div className="mt-2 flex items-center gap-1 text-xs text-muted-foreground">
-              <Building2 className="h-3 w-3" /> Combined
-            </div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardHeader className="pb-2">
             <CardDescription>W2 Employees</CardDescription>
             <CardTitle className="text-2xl font-semibold tabular-nums">
               {employees.filter(e => e.compensationType === 'W2').length}
@@ -174,9 +150,7 @@ const Employees = () => {
         <Card>
           <CardHeader className="pb-2">
             <CardDescription>Union Members</CardDescription>
-            <CardTitle className="text-2xl font-semibold tabular-nums">
-              {employees.filter(e => e.isUnion).length}
-            </CardTitle>
+            <CardTitle className="text-2xl font-semibold tabular-nums">{unionCount}</CardTitle>
           </CardHeader>
           <CardContent>
             <Separator />
@@ -195,7 +169,6 @@ const Employees = () => {
                 <TableHead>Name</TableHead>
                 <TableHead>Contact</TableHead>
                 <TableHead>Compensation</TableHead>
-                <TableHead>Salary</TableHead>
                 <TableHead>Dependents</TableHead>
                 <TableHead></TableHead>
               </TableRow>
@@ -228,9 +201,6 @@ const Employees = () => {
                       {emp.compensationType === 'W2' ? 'W2' : '1099'}
                     </Badge>
                   </TableCell>
-                  <TableCell className="font-medium tabular-nums">
-                    {emp.salary != null ? formatCurrency(emp.salary) : '—'}
-                  </TableCell>
                   <TableCell className="tabular-nums text-muted-foreground">
                     {emp.dependents > 0 ? <><UsersIcon className="mr-1 h-3 w-3 inline" />{emp.dependents}</> : '—'}
                   </TableCell>
@@ -248,7 +218,7 @@ const Employees = () => {
               ))}
               {employees.length === 0 && (
                 <TableRow>
-                  <TableCell colSpan={6} className="text-center text-muted-foreground py-8">
+                  <TableCell colSpan={5} className="text-center text-muted-foreground py-8">
                     No employees yet. Add your first employee to get started.
                   </TableCell>
                 </TableRow>
@@ -296,33 +266,13 @@ const Employees = () => {
                 </Select>
               </div>
               <div className="space-y-2">
-                <Label htmlFor="emp-salary">Salary / Rate ($)</Label>
-                <Input id="emp-salary" type="number" step="0.01" value={formData.salary} onChange={e => setFormData({ ...formData, salary: e.target.value })} />
-              </div>
-            </div>
-            <div className="grid grid-cols-3 gap-4">
-              <div className="space-y-2">
-                <Label htmlFor="emp-bonus">Bonus ($)</Label>
-                <Input id="emp-bonus" type="number" step="0.01" value={formData.bonus} onChange={e => setFormData({ ...formData, bonus: e.target.value })} />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="emp-deductions">Deductions ($)</Label>
-                <Input id="emp-deductions" type="number" step="0.01" value={formData.deductions} onChange={e => setFormData({ ...formData, deductions: e.target.value })} />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="emp-taxes">Taxes ($)</Label>
-                <Input id="emp-taxes" type="number" step="0.01" value={formData.taxes} onChange={e => setFormData({ ...formData, taxes: e.target.value })} />
-              </div>
-            </div>
-            <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-2">
                 <Label htmlFor="emp-dependents">Dependents</Label>
                 <Input id="emp-dependents" type="number" min="0" value={formData.dependents} onChange={e => setFormData({ ...formData, dependents: e.target.value })} />
               </div>
-              <div className="flex items-center gap-2 pt-6">
-                <Checkbox id="emp-union" checked={formData.isUnion} onCheckedChange={v => setFormData({ ...formData, isUnion: !!v })} />
-                <Label htmlFor="emp-union">Union employee</Label>
-              </div>
+            </div>
+            <div className="flex items-center gap-2 pt-2">
+              <Checkbox id="emp-union" checked={formData.isUnion} onCheckedChange={v => setFormData({ ...formData, isUnion: !!v })} />
+              <Label htmlFor="emp-union">Union employee</Label>
             </div>
             <div className="space-y-2">
               <Label htmlFor="emp-notes">Notes</Label>
