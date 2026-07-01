@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { api, formatCurrency } from '../../utils/api';
-import { Plus, Trash2, Building2, Users } from 'lucide-react';
+import { Plus, Trash2, Building2, Users, Edit, FileText, Users as UsersIcon } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
@@ -11,6 +11,7 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Separator } from '@/components/ui/separator';
 import { Checkbox } from '@/components/ui/checkbox';
+import { Textarea } from '@/components/ui/textarea';
 import { toast } from '@/components/ui/toast';
 
 interface Employee {
@@ -19,22 +20,27 @@ interface Employee {
   address?: string;
   phone?: string;
   email?: string;
-  position?: string;
   compensationType: string;
-  salary: number;
+  salary?: number | null;
   bonus: number;
   deductions: number;
   taxes: number;
   isUnion: boolean;
+  dependents: number;
+  notes?: string | null;
 }
+
+type ModalMode = 'add' | 'edit' | null;
 
 const Employees = () => {
   const [employees, setEmployees] = useState<Employee[]>([]);
   const [loading, setLoading] = useState(true);
-  const [showModal, setShowModal] = useState(false);
+  const [modalMode, setModalMode] = useState<ModalMode>(null);
+  const [editingId, setEditingId] = useState<string | null>(null);
   const [formData, setFormData] = useState({
-    name: '', address: '', phone: '', email: '', position: '',
-    compensationType: 'W2', salary: '', bonus: '0', deductions: '0', taxes: '0', isUnion: false,
+    name: '', address: '', phone: '', email: '',
+    compensationType: 'W2', salary: '', bonus: '0', deductions: '0', taxes: '0',
+    isUnion: false, dependents: '0', notes: '',
   });
 
   useEffect(() => { fetchEmployees(); }, []);
@@ -43,21 +49,58 @@ const Employees = () => {
     api.get<Employee[]>('/employees/').then(setEmployees).finally(() => setLoading(false));
   };
 
+  const openAdd = () => {
+    setModalMode('add');
+    setEditingId(null);
+    setFormData({ name: '', address: '', phone: '', email: '', compensationType: 'W2', salary: '', bonus: '0', deductions: '0', taxes: '0', isUnion: false, dependents: '0', notes: '' });
+  };
+
+  const openEdit = (emp: Employee) => {
+    setModalMode('edit');
+    setEditingId(emp.id);
+    setFormData({
+      name: emp.name,
+      address: emp.address || '',
+      phone: emp.phone || '',
+      email: emp.email || '',
+      compensationType: emp.compensationType,
+      salary: emp.salary != null ? String(emp.salary) : '',
+      bonus: String(emp.bonus),
+      deductions: String(emp.deductions),
+      taxes: String(emp.taxes),
+      isUnion: emp.isUnion,
+      dependents: String(emp.dependents),
+      notes: emp.notes || '',
+    });
+  };
+
+  const closeModal = () => {
+    setModalMode(null);
+    setEditingId(null);
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     try {
-      await api.post('/employees/', {
+      const body = {
         ...formData,
-        salary: parseFloat(formData.salary),
-        bonus: parseFloat(formData.bonus),
-        deductions: parseFloat(formData.deductions),
-        taxes: parseFloat(formData.taxes),
-      });
-      setFormData({ name: '', address: '', phone: '', email: '', position: '', compensationType: 'W2', salary: '', bonus: '0', deductions: '0', taxes: '0', isUnion: false });
+        salary: formData.salary ? parseFloat(formData.salary) : null,
+        bonus: formData.bonus ? parseFloat(formData.bonus) : 0,
+        deductions: formData.deductions ? parseFloat(formData.deductions) : 0,
+        taxes: formData.taxes ? parseFloat(formData.taxes) : 0,
+        dependents: formData.dependents ? parseInt(formData.dependents) : 0,
+        notes: formData.notes || null,
+      };
+      if (modalMode === 'add') {
+        await api.post('/employees/', body);
+        toast.success('Employee added');
+      } else {
+        await api.put(`/employees/${editingId}`, body);
+        toast.success('Employee updated');
+      }
+      closeModal();
       fetchEmployees();
-      toast.success('Employee added');
-      setShowModal(false);
-    } catch (err: any) { toast.error(err.message || 'Failed to add employee'); }
+    } catch (err: any) { toast.error(err.message || 'Failed to save employee'); }
   };
 
   const handleDelete = async (id: string) => {
@@ -69,7 +112,7 @@ const Employees = () => {
     } catch (err: any) { toast.error(err.message || 'Failed to delete employee'); }
   };
 
-  const totalSalary = employees.reduce((sum, e) => sum + e.salary, 0);
+  const totalSalary = employees.reduce((sum, e) => sum + (e.salary || 0), 0);
 
   if (loading) return (
     <div className="flex items-center justify-center h-64">
@@ -84,12 +127,12 @@ const Employees = () => {
           <h1 className="text-2xl font-bold tracking-tight">Office Employees</h1>
           <p className="text-muted-foreground">Manage office staff and compensation</p>
         </div>
-        <Button onClick={() => setShowModal(true)}>
+        <Button onClick={openAdd}>
           <Plus className="mr-2 h-4 w-4" /> Add Employee
         </Button>
       </div>
 
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-4">
         <Card>
           <CardHeader className="pb-2">
             <CardDescription>Total Employees</CardDescription>
@@ -98,19 +141,19 @@ const Employees = () => {
           <CardContent>
             <Separator />
             <div className="mt-2 flex items-center gap-1 text-xs text-muted-foreground">
-              <Users className="h-3 w-3" /> Office staff
+              <UsersIcon className="h-3 w-3" /> Office staff
             </div>
           </CardContent>
         </Card>
         <Card>
           <CardHeader className="pb-2">
-            <CardDescription>Monthly Payroll</CardDescription>
+            <CardDescription>Monthly Salary</CardDescription>
             <CardTitle className="text-2xl font-semibold tabular-nums">{formatCurrency(totalSalary)}</CardTitle>
           </CardHeader>
           <CardContent>
             <Separator />
             <div className="mt-2 flex items-center gap-1 text-xs text-muted-foreground">
-              <Building2 className="h-3 w-3" /> Combined salaries
+              <Building2 className="h-3 w-3" /> Combined
             </div>
           </CardContent>
         </Card>
@@ -128,6 +171,20 @@ const Employees = () => {
             </div>
           </CardContent>
         </Card>
+        <Card>
+          <CardHeader className="pb-2">
+            <CardDescription>Union Members</CardDescription>
+            <CardTitle className="text-2xl font-semibold tabular-nums">
+              {employees.filter(e => e.isUnion).length}
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <Separator />
+            <div className="mt-2 flex items-center gap-1 text-xs text-muted-foreground">
+              <Badge variant="outline" className="text-xs">Union</Badge>
+            </div>
+          </CardContent>
+        </Card>
       </div>
 
       <Card>
@@ -136,12 +193,10 @@ const Employees = () => {
             <TableHeader>
               <TableRow>
                 <TableHead>Name</TableHead>
-                <TableHead>Position</TableHead>
                 <TableHead>Contact</TableHead>
                 <TableHead>Compensation</TableHead>
                 <TableHead>Salary</TableHead>
-                <TableHead>Bonus</TableHead>
-                <TableHead>Taxes</TableHead>
+                <TableHead>Dependents</TableHead>
                 <TableHead></TableHead>
               </TableRow>
             </TableHeader>
@@ -155,33 +210,45 @@ const Employees = () => {
                       </div>
                       <div>
                         <div>{emp.name}</div>
-                        {emp.isUnion && <Badge variant="outline" className="text-xs">Union</Badge>}
+                        <div className="flex items-center gap-1">
+                          {emp.isUnion && <Badge variant="outline" className="text-xs">Union</Badge>}
+                          {emp.notes && <Badge variant="outline" className="text-xs"><FileText className="mr-1 h-3 w-3" />Notes</Badge>}
+                        </div>
                       </div>
                     </div>
                   </TableCell>
-                  <TableCell className="text-muted-foreground">{emp.position || '—'}</TableCell>
                   <TableCell className="text-muted-foreground text-sm">
                     {emp.email && <div>{emp.email}</div>}
                     {emp.phone && <div>{emp.phone}</div>}
+                    {emp.address && <div className="text-xs text-muted-foreground">{emp.address}</div>}
+                    {!emp.email && !emp.phone && !emp.address && <span className="text-muted-foreground/50">—</span>}
                   </TableCell>
                   <TableCell>
                     <Badge variant={emp.compensationType === 'W2' ? 'default' : 'secondary'}>
                       {emp.compensationType === 'W2' ? 'W2' : '1099'}
                     </Badge>
                   </TableCell>
-                  <TableCell className="font-medium tabular-nums">{formatCurrency(emp.salary)}</TableCell>
-                  <TableCell className="tabular-nums text-muted-foreground">{emp.bonus > 0 ? formatCurrency(emp.bonus) : '—'}</TableCell>
-                  <TableCell className="tabular-nums text-muted-foreground">{formatCurrency(emp.taxes)}</TableCell>
+                  <TableCell className="font-medium tabular-nums">
+                    {emp.salary != null ? formatCurrency(emp.salary) : '—'}
+                  </TableCell>
+                  <TableCell className="tabular-nums text-muted-foreground">
+                    {emp.dependents > 0 ? <><UsersIcon className="mr-1 h-3 w-3 inline" />{emp.dependents}</> : '—'}
+                  </TableCell>
                   <TableCell>
-                    <Button variant="ghost" size="icon" onClick={() => handleDelete(emp.id)} className="text-destructive hover:text-destructive">
-                      <Trash2 className="h-4 w-4" />
-                    </Button>
+                    <div className="flex items-center gap-1">
+                      <Button variant="ghost" size="icon" onClick={() => openEdit(emp)} className="h-8 w-8">
+                        <Edit className="h-4 w-4" />
+                      </Button>
+                      <Button variant="ghost" size="icon" onClick={() => handleDelete(emp.id)} className="h-8 w-8 text-destructive hover:text-destructive">
+                        <Trash2 className="h-4 w-4" />
+                      </Button>
+                    </div>
                   </TableCell>
                 </TableRow>
               ))}
               {employees.length === 0 && (
                 <TableRow>
-                  <TableCell colSpan={8} className="text-center text-muted-foreground py-8">
+                  <TableCell colSpan={6} className="text-center text-muted-foreground py-8">
                     No employees yet. Add your first employee to get started.
                   </TableCell>
                 </TableRow>
@@ -191,22 +258,16 @@ const Employees = () => {
         </CardContent>
       </Card>
 
-      <Dialog open={showModal} onOpenChange={setShowModal}>
+      <Dialog open={modalMode !== null} onOpenChange={(open) => !open && closeModal()}>
         <DialogContent className="sm:max-w-lg max-h-[90vh] overflow-y-auto">
           <DialogHeader>
-            <DialogTitle>Add Employee</DialogTitle>
-            <DialogDescription>Enter employee information and compensation details</DialogDescription>
+            <DialogTitle>{modalMode === 'edit' ? 'Edit Employee' : 'Add Employee'}</DialogTitle>
+            <DialogDescription>{modalMode === 'edit' ? 'Update employee information' : 'Enter employee information and compensation details'}</DialogDescription>
           </DialogHeader>
           <form onSubmit={handleSubmit} className="space-y-4">
-            <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <Label htmlFor="emp-name">Full Name *</Label>
-                <Input id="emp-name" value={formData.name} onChange={e => setFormData({ ...formData, name: e.target.value })} required />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="emp-position">Position</Label>
-                <Input id="emp-position" value={formData.position} onChange={e => setFormData({ ...formData, position: e.target.value })} />
-              </div>
+            <div className="space-y-2">
+              <Label htmlFor="emp-name">Full Name *</Label>
+              <Input id="emp-name" value={formData.name} onChange={e => setFormData({ ...formData, name: e.target.value })} required />
             </div>
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
@@ -235,8 +296,8 @@ const Employees = () => {
                 </Select>
               </div>
               <div className="space-y-2">
-                <Label htmlFor="emp-salary">Salary / Rate ($) *</Label>
-                <Input id="emp-salary" type="number" step="0.01" value={formData.salary} onChange={e => setFormData({ ...formData, salary: e.target.value })} required />
+                <Label htmlFor="emp-salary">Salary / Rate ($)</Label>
+                <Input id="emp-salary" type="number" step="0.01" value={formData.salary} onChange={e => setFormData({ ...formData, salary: e.target.value })} />
               </div>
             </div>
             <div className="grid grid-cols-3 gap-4">
@@ -253,13 +314,23 @@ const Employees = () => {
                 <Input id="emp-taxes" type="number" step="0.01" value={formData.taxes} onChange={e => setFormData({ ...formData, taxes: e.target.value })} />
               </div>
             </div>
-            <div className="flex items-center gap-2">
-              <Checkbox id="emp-union" checked={formData.isUnion} onCheckedChange={v => setFormData({ ...formData, isUnion: !!v })} />
-              <Label htmlFor="emp-union">Union employee</Label>
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label htmlFor="emp-dependents">Dependents</Label>
+                <Input id="emp-dependents" type="number" min="0" value={formData.dependents} onChange={e => setFormData({ ...formData, dependents: e.target.value })} />
+              </div>
+              <div className="flex items-center gap-2 pt-6">
+                <Checkbox id="emp-union" checked={formData.isUnion} onCheckedChange={v => setFormData({ ...formData, isUnion: !!v })} />
+                <Label htmlFor="emp-union">Union employee</Label>
+              </div>
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="emp-notes">Notes</Label>
+              <Textarea id="emp-notes" value={formData.notes} onChange={e => setFormData({ ...formData, notes: e.target.value })} rows={3} placeholder="Any additional notes about this employee..." />
             </div>
             <DialogFooter>
-              <Button type="button" variant="outline" onClick={() => setShowModal(false)}>Cancel</Button>
-              <Button type="submit">Add Employee</Button>
+              <Button type="button" variant="outline" onClick={closeModal}>Cancel</Button>
+              <Button type="submit">{modalMode === 'edit' ? 'Save Changes' : 'Add Employee'}</Button>
             </DialogFooter>
           </form>
         </DialogContent>

@@ -14,9 +14,20 @@ router.get('/', authenticate, async (_req: AuthRequest, res) => {
 
 router.post('/', authenticate, authorize('OWNER', 'MANAGER'), async (req: AuthRequest, res) => {
   try {
-    const { name, address, phone, email, position, compensationType, salary, bonus, deductions, taxes, isUnion } = req.body;
-    if (!name || !compensationType || salary === undefined) return res.status(400).json({ error: 'Name, compensation type, and salary are required' });
-    const employee = await prisma.employee.create({ data: { name, address, phone, email, position, compensationType, salary, bonus, deductions, taxes, isUnion } });
+    const { name, address, phone, email, compensationType, salary, bonus, deductions, taxes, isUnion, dependents, notes } = req.body;
+    if (!name || !compensationType) return res.status(400).json({ error: 'Name and compensation type are required' });
+    const employee = await prisma.employee.create({
+      data: {
+        name, address, phone, email, compensationType,
+        salary: salary ? parseFloat(salary) : null,
+        bonus: bonus ? parseFloat(bonus) : 0,
+        deductions: deductions ? parseFloat(deductions) : 0,
+        taxes: taxes ? parseFloat(taxes) : 0,
+        isUnion: !!isUnion,
+        dependents: dependents ? parseInt(dependents) : 0,
+        notes: notes || null,
+      },
+    });
     await logAction(req.user!.id, 'CREATE', 'Employee', employee.id);
     res.status(201).json(employee);
   } catch (e: any) { res.status(500).json({ error: e.message || 'Failed to create employee' }); }
@@ -27,7 +38,24 @@ router.put('/:id', authenticate, authorize('OWNER', 'MANAGER'), async (req: Auth
     const { id } = req.params;
     const employee = await prisma.employee.findUnique({ where: { id } });
     if (!employee) return res.status(404).json({ error: 'Employee not found' });
-    const updated = await prisma.employee.update({ where: { id }, data: req.body });
+    const { name, salary, bonus, deductions, taxes, dependents, notes, compensationType, address, phone, email, isUnion } = req.body;
+    const updated = await prisma.employee.update({
+      where: { id },
+      data: {
+        ...(name !== undefined && { name }),
+        ...(compensationType !== undefined && { compensationType }),
+        ...(salary !== undefined && { salary: salary ? parseFloat(salary) : null }),
+        ...(bonus !== undefined && { bonus: bonus ? parseFloat(bonus) : 0 }),
+        ...(deductions !== undefined && { deductions: deductions ? parseFloat(deductions) : 0 }),
+        ...(taxes !== undefined && { taxes: taxes ? parseFloat(taxes) : 0 }),
+        ...(typeof isUnion !== 'undefined' && { isUnion: !!isUnion }),
+        ...(dependents !== undefined && { dependents: dependents ? parseInt(dependents) : 0 }),
+        ...(notes !== undefined && { notes: notes || null }),
+        ...(address !== undefined && { address }),
+        ...(phone !== undefined && { phone }),
+        ...(email !== undefined && { email }),
+      },
+    });
     await logAction(req.user!.id, 'UPDATE', 'Employee', id);
     res.json(updated);
   } catch (e: any) { res.status(500).json({ error: e.message || 'Failed to update employee' }); }

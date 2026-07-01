@@ -214,13 +214,14 @@ model Employee {
   address             String?
   phone               String?
   email               String?
-  position            String?
   compensationType    CompensationType
-  salary              Float
+  salary              Float?
   bonus               Float             @default(0)
   deductions          Float             @default(0)
   taxes               Float             @default(0)
   isUnion             Boolean           @default(false)
+  dependents          Int               @default(0)
+  notes               String?
   createdAt           DateTime          @default(now())
   updatedAt           DateTime          @updatedAt
   payrollRecords      OfficePayroll[]
