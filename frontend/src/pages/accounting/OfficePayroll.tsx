@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { api, formatCurrency, formatDate } from '../../utils/api';
 import { useAuth } from '../../context/AuthContext';
-import { Plus, Trash2, Users, Wallet, DollarSign, Check, ChevronDown } from 'lucide-react';
+import { Plus, Trash2, Wallet, DollarSign, Check, Calendar, ChevronDown, ChevronRight } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
@@ -11,106 +11,146 @@ import { Badge } from '@/components/ui/badge';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Separator } from '@/components/ui/separator';
-import { Checkbox } from '@/components/ui/checkbox';
+import { Textarea } from '@/components/ui/textarea';
 import { toast } from '@/components/ui/toast';
 
 interface Employee {
   id: string;
   name: string;
-  position?: string;
+  role: string;
+  isUnion: boolean;
   compensationType: string;
+  employmentPeriods: { id: string }[];
 }
 
-interface PayrollEntry {
+interface PaymentLog {
   id: string;
   employeeId: string;
   employee: Employee;
-  grossPay: number;
-  wages: number;
-  benefits: number;
-  taxes: number;
-  deductions: number;
-  netPay: number;
-  periodStart: string;
-  periodEnd: string;
-  paid: boolean;
+  employmentPeriodId?: string;
+  amount: number;
+  date: string;
+  paymentMethod: string;
+  paymentType: string;
+  description?: string | null;
 }
+
+interface Stats {
+  byType: { paymentType: string; _sum: { amount: number } }[];
+  byMethod: { paymentMethod: string; _sum: { amount: number } }[];
+  total: number;
+  count: number;
+}
+
+const PAYMENT_METHODS = ['WIRE', 'ZELLE', 'CASH', 'CHECK', 'OTHER'];
+const PAYMENT_TYPES = ['SALARY', 'BONUS', 'OTHER'];
+
+const methodLabel = (m: string) => {
+  const map: Record<string, string> = { WIRE: 'Wire', ZELLE: 'Zelle', CASH: 'Cash', CHECK: 'Check', OTHER: 'Other' };
+  return map[m] || m;
+};
+
+const typeLabel = (t: string) => {
+  const map: Record<string, string> = { SALARY: 'Salary', BONUS: 'Bonus', OTHER: 'Other' };
+  return map[t] || t;
+};
 
 const OfficePayroll = () => {
   const { user } = useAuth();
-  const [payroll, setPayroll] = useState<PayrollEntry[]>([]);
+  const [payments, setPayments] = useState<PaymentLog[]>([]);
   const [employees, setEmployees] = useState<Employee[]>([]);
+  const [stats, setStats] = useState<Stats>({ byType: [], byMethod: [], total: 0, count: 0 });
   const [loading, setLoading] = useState(true);
   const [showModal, setShowModal] = useState(false);
+  const [expandedEmployees, setExpandedEmployees] = useState<Set<string>>(new Set());
+  const [filters, setFilters] = useState({ employeeId: '', paymentType: '', paymentMethod: '', startDate: '', endDate: '' });
+
   const [formData, setFormData] = useState({
-    employeeId: '', grossPay: '', wages: '', benefits: '', taxes: '', deductions: '', netPay: '',
-    periodStart: new Date().toISOString().split('T')[0],
-    periodEnd: new Date().toISOString().split('T')[0],
-    paid: false,
+    employeeId: '', amount: '', date: new Date().toISOString().split('T')[0],
+    paymentMethod: 'WIRE', paymentType: 'SALARY', description: '',
   });
 
-  useEffect(() => {
+  useEffect(() => { fetchData(); }, []);
+
+  const fetchData = () => {
+    const query = new URLSearchParams();
+    Object.entries(filters).forEach(([k, v]) => { if (v) query.set(k, v); });
     Promise.all([
-      api.get<PayrollEntry[]>('/office-payroll/'),
+      api.get<PaymentLog[]>(`/office-payroll/?${query}`),
       api.get<Employee[]>('/employees/'),
-    ]).then(([p, e]) => { setPayroll(p); setEmployees(e); })
-      .finally(() => setLoading(false));
-  }, []);
+      api.get<Stats>('/office-payroll/stats'),
+    ]).then(([p, e, s]) => {
+      setPayments(p);
+      setEmployees(e);
+      setStats(s);
+    }).finally(() => setLoading(false));
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     try {
-      const grossPay = parseFloat(formData.wages) + (parseFloat(formData.benefits) || 0);
-      const netPay = grossPay - (parseFloat(formData.taxes) || 0) - (parseFloat(formData.deductions) || 0);
+      if (formData.paymentType === 'OTHER' && !formData.description) {
+        toast.error('Description is required for "Other" payment type');
+        return;
+      }
       await api.post('/office-payroll/', {
         employeeId: formData.employeeId,
-        grossPay,
-        wages: parseFloat(formData.wages),
-        benefits: parseFloat(formData.benefits) || 0,
-        taxes: parseFloat(formData.taxes) || 0,
-        deductions: parseFloat(formData.deductions) || 0,
-        netPay,
-        periodStart: formData.periodStart,
-        periodEnd: formData.periodEnd,
-        paid: formData.paid,
+        amount: parseFloat(formData.amount),
+        date: formData.date,
+        paymentMethod: formData.paymentMethod,
+        paymentType: formData.paymentType,
+        description: formData.paymentType === 'OTHER' ? formData.description : null,
       });
       setFormData({
-        employeeId: '', grossPay: '', wages: '', benefits: '', taxes: '', deductions: '', netPay: '',
-        periodStart: new Date().toISOString().split('T')[0],
-        periodEnd: new Date().toISOString().split('T')[0],
-        paid: false,
+        employeeId: '', amount: '', date: new Date().toISOString().split('T')[0],
+        paymentMethod: 'WIRE', paymentType: 'SALARY', description: '',
       });
       setShowModal(false);
-      const [p, e] = await Promise.all([
-        api.get<PayrollEntry[]>('/office-payroll/'),
-        api.get<Employee[]>('/employees/'),
-      ]);
-      setPayroll(p);
-      setEmployees(e);
-      toast.success('Payroll record added');
-    } catch (err: any) { toast.error(err.message || 'Failed to add payroll record'); }
+      fetchData();
+      toast.success('Payment log added');
+    } catch (err: any) { toast.error(err.message || 'Failed to add payment log'); }
   };
 
   const handleDelete = async (id: string) => {
-    if (!confirm('Delete this payroll record?')) return;
+    if (!confirm('Delete this payment record?')) return;
     try {
       await api.delete(`/office-payroll/${id}`);
-      const p = await api.get<PayrollEntry[]>('/office-payroll/');
-      setPayroll(p);
-      toast.success('Record deleted');
-    } catch (err: any) { toast.error(err.message || 'Failed to delete record'); }
+      fetchData();
+      toast.success('Payment deleted');
+    } catch (err: any) { toast.error(err.message || 'Failed to delete payment'); }
+  };
+
+  const toggleEmployee = (id: string) => {
+    setExpandedEmployees(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
   };
 
   const isManager = user?.role === 'OWNER' || user?.role === 'MANAGER';
-  const totalGross = payroll.reduce((s, p) => s + p.grossPay, 0);
-  const totalNet = payroll.reduce((s, p) => s + p.netPay, 0);
-  const totalBenefits = payroll.reduce((s, p) => s + p.benefits, 0);
 
-  // Group payroll by employee
   const grouped = employees.map(emp => ({
     employee: emp,
-    entries: payroll.filter(p => p.employeeId === emp.id).sort((a, b) => b.periodEnd.localeCompare(a.periodEnd)),
+    entries: payments.filter(p => p.employeeId === emp.id).sort((a, b) => b.date.localeCompare(a.date)),
   })).filter(g => g.entries.length > 0);
+
+  const methodBadge = (m: string) => {
+    const colors: Record<string, string> = {
+      WIRE: 'bg-blue-100 text-blue-800', ZELLE: 'bg-purple-100 text-purple-800',
+      CASH: 'bg-green-100 text-green-800', CHECK: 'bg-yellow-100 text-yellow-800', OTHER: 'bg-gray-100 text-gray-800',
+    };
+    return <span className={`inline-flex items-center rounded px-2 py-0.5 text-xs font-medium ${colors[m] || ''}`}>{methodLabel(m)}</span>;
+  };
+
+  const typeBadge = (t: string) => {
+    const colors: Record<string, string> = {
+      SALARY: 'bg-slate-100 text-slate-800', BONUS: 'bg-amber-100 text-amber-800',
+      OTHER: 'bg-gray-100 text-gray-800',
+    };
+    return <span className={`inline-flex items-center rounded px-2 py-0.5 text-xs font-medium ${colors[t] || ''}`}>{typeLabel(t)}</span>;
+  };
 
   if (loading) return (
     <div className="flex items-center justify-center h-64">
@@ -123,11 +163,11 @@ const OfficePayroll = () => {
       <div className="flex items-center justify-between">
         <div className="space-y-1">
           <h1 className="text-2xl font-bold tracking-tight">Office Payroll</h1>
-          <p className="text-muted-foreground">Track office staff compensation and deductions</p>
+          <p className="text-muted-foreground">Payment log — track all compensation</p>
         </div>
         {isManager && (
           <Button onClick={() => setShowModal(true)}>
-            <Plus className="mr-2 h-4 w-4" /> Add Record
+            <Plus className="mr-2 h-4 w-4" /> Log Payment
           </Button>
         )}
       </div>
@@ -136,232 +176,234 @@ const OfficePayroll = () => {
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-4">
         <Card>
           <CardHeader className="pb-2">
-            <CardDescription>Total Gross Pay</CardDescription>
-            <CardTitle className="text-2xl font-semibold tabular-nums">{formatCurrency(totalGross)}</CardTitle>
+            <CardDescription>Total Paid</CardDescription>
+            <CardTitle className="text-2xl font-semibold tabular-nums">{formatCurrency(stats.total)}</CardTitle>
           </CardHeader>
           <CardContent>
             <Separator />
             <div className="mt-2 flex items-center gap-1 text-xs text-muted-foreground">
-              <DollarSign className="h-3 w-3" /> Wages + Benefits
+              <DollarSign className="h-3 w-3" /> {stats.count} payment{stats.count !== 1 ? 's' : ''}
             </div>
           </CardContent>
         </Card>
-        <Card>
-          <CardHeader className="pb-2">
-            <CardDescription>Benefits (Union)</CardDescription>
-            <CardTitle className="text-2xl font-semibold tabular-nums">{formatCurrency(totalBenefits)}</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <Separator />
-            <div className="mt-2 flex items-center gap-1 text-xs text-muted-foreground">
-              <Users className="h-3 w-3" /> Paid end of month
-            </div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardHeader className="pb-2">
-            <CardDescription>Total Net Pay</CardDescription>
-            <CardTitle className="text-2xl font-semibold tabular-nums">{formatCurrency(totalNet)}</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <Separator />
-            <div className="mt-2 flex items-center gap-1 text-xs text-muted-foreground">
-              <Wallet className="h-3 w-3" /> After deductions
-            </div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardHeader className="pb-2">
-            <CardDescription>Records</CardDescription>
-            <CardTitle className="text-2xl font-semibold tabular-nums">{payroll.length}</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <Separator />
-            <div className="mt-2 flex items-center gap-1 text-xs text-muted-foreground">
-              <DollarSign className="h-3 w-3" /> Payroll entries
-            </div>
-          </CardContent>
-        </Card>
+        {(stats.byType || []).map(bt => (
+          <Card key={bt.paymentType}>
+            <CardHeader className="pb-2">
+              <CardDescription>{typeLabel(bt.paymentType)}</CardDescription>
+              <CardTitle className="text-2xl font-semibold tabular-nums">{formatCurrency(bt._sum.amount || 0)}</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <Separator />
+              <div className="mt-2 text-xs text-muted-foreground">By type</div>
+            </CardContent>
+          </Card>
+        ))}
       </div>
 
-      {/* Payroll by Employee */}
+      {/* Filters */}
+      <Card>
+        <CardContent className="pt-4">
+          <div className="flex flex-wrap items-end gap-4">
+            <div className="space-y-2">
+              <Label>Employee</Label>
+              <Select value={filters.employeeId} onValueChange={v => setFilters({ ...filters, employeeId: v })}>
+                <SelectTrigger className="w-48"><SelectValue placeholder="All" /></SelectTrigger>
+                <SelectContent>
+                  {employees.map(emp => <SelectItem key={emp.id} value={emp.id}>{emp.name}</SelectItem>)}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-2">
+              <Label>Type</Label>
+              <Select value={filters.paymentType} onValueChange={v => setFilters({ ...filters, paymentType: v })}>
+                <SelectTrigger className="w-36"><SelectValue placeholder="All" /></SelectTrigger>
+                <SelectContent>
+                  {PAYMENT_TYPES.map(t => <SelectItem key={t} value={t}>{typeLabel(t)}</SelectItem>)}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-2">
+              <Label>Method</Label>
+              <Select value={filters.paymentMethod} onValueChange={v => setFilters({ ...filters, paymentMethod: v })}>
+                <SelectTrigger className="w-36"><SelectValue placeholder="All" /></SelectTrigger>
+                <SelectContent>
+                  {PAYMENT_METHODS.map(m => <SelectItem key={m} value={m}>{methodLabel(m)}</SelectItem>)}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-2">
+              <Label>From</Label>
+              <Input type="date" value={filters.startDate} onChange={e => setFilters({ ...filters, startDate: e.target.value })} className="w-40" />
+            </div>
+            <div className="space-y-2">
+              <Label>To</Label>
+              <Input type="date" value={filters.endDate} onChange={e => setFilters({ ...filters, endDate: e.target.value })} className="w-40" />
+            </div>
+            <Button variant="outline" onClick={() => setFilters({ employeeId: '', paymentType: '', paymentMethod: '', startDate: '', endDate: '' })}>
+              Clear
+            </Button>
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Payment Log by Employee */}
       {grouped.length === 0 ? (
         <Card>
           <CardContent className="flex flex-col items-center py-12">
-            <DollarSign className="mb-3 h-12 w-12 text-muted-foreground" />
-            <h3 className="font-medium">No payroll records</h3>
-            <p className="text-sm text-muted-foreground">Add employees first, then create payroll records</p>
+            <Wallet className="mb-3 h-12 w-12 text-muted-foreground" />
+            <h3 className="font-medium">No payment logs</h3>
+            <p className="text-sm text-muted-foreground">Add employees first, then log payments</p>
             {isManager && (
               <Button className="mt-4" onClick={() => setShowModal(true)}>
-                <Plus className="mr-2 h-4 w-4" /> Add Record
+                <Plus className="mr-2 h-4 w-4" /> Log Payment
               </Button>
             )}
           </CardContent>
         </Card>
       ) : (
         <div className="space-y-4">
-          {grouped.map(({ employee, entries }) => (
-            <Card key={employee.id}>
-              <CardHeader className="pb-3">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-3">
-                    <div className="flex h-10 w-10 items-center justify-center rounded-full bg-muted text-base font-medium">
-                      {employee.name.charAt(0)}
+          {grouped.map(({ employee, entries }) => {
+            const isExpanded = expandedEmployees.has(employee.id);
+            const totalPaid = entries.reduce((s, e) => s + e.amount, 0);
+            return (
+              <Card key={employee.id}>
+                <CardHeader className="pb-2">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-3">
+                      <Button
+                        variant="ghost" size="icon" className="h-6 w-6"
+                        onClick={() => toggleEmployee(employee.id)}
+                      >
+                        {isExpanded ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
+                      </Button>
+                      <div>
+                        <CardTitle className="text-base">{employee.name}</CardTitle>
+                        <CardDescription>{employee.role} · {entries.length} payment{entries.length !== 1 ? 's' : ''}</CardDescription>
+                      </div>
                     </div>
-                    <div>
-                      <CardTitle className="text-base">{employee.name}</CardTitle>
-                      <CardDescription>
-                        {employee.position || 'No position'}
-                        {' · '}
-                        <Badge variant={employee.compensationType === 'W2' ? 'default' : 'secondary'}>
-                          {employee.compensationType === 'W2' ? 'W2' : '1099'}
-                        </Badge>
-                      </CardDescription>
+                    <div className="text-right text-sm">
+                      <div className="text-muted-foreground">Total Paid</div>
+                      <div className="font-medium tabular-nums">{formatCurrency(totalPaid)}</div>
                     </div>
                   </div>
-                  <div className="text-right text-sm">
-                    <div className="text-muted-foreground">Total Paid</div>
-                    <div className="font-medium tabular-nums">
-                      {formatCurrency(entries.reduce((s, e) => s + e.netPay, 0))}
-                    </div>
-                  </div>
-                </div>
-              </CardHeader>
-              <CardContent className="p-0">
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>Period</TableHead>
-                      <TableHead className="text-right">Wages</TableHead>
-                      <TableHead className="text-right">Benefits</TableHead>
-                      <TableHead className="text-right">Taxes</TableHead>
-                      <TableHead className="text-right">Deductions</TableHead>
-                      <TableHead className="text-right">Net Pay</TableHead>
-                      <TableHead>Status</TableHead>
-                      <TableHead></TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {entries.map(entry => (
-                      <TableRow key={entry.id}>
-                        <TableCell className="whitespace-nowrap text-sm">
-                          {formatDate(entry.periodStart)} — {formatDate(entry.periodEnd)}
-                        </TableCell>
-                        <TableCell className="text-right tabular-nums">{formatCurrency(entry.wages)}</TableCell>
-                        <TableCell className="text-right tabular-nums">{formatCurrency(entry.benefits)}</TableCell>
-                        <TableCell className="text-right tabular-nums text-muted-foreground">{formatCurrency(entry.taxes)}</TableCell>
-                        <TableCell className="text-right tabular-nums text-muted-foreground">{formatCurrency(entry.deductions)}</TableCell>
-                        <TableCell className="text-right font-medium tabular-nums">{formatCurrency(entry.netPay)}</TableCell>
-                        <TableCell>
-                          <Badge variant={entry.paid ? 'default' : 'secondary'}>
-                            {entry.paid ? (
-                              <><Check className="mr-1 h-3 w-3" /> Paid</>
-                            ) : 'Unpaid'}
-                          </Badge>
-                        </TableCell>
-                        <TableCell>
-                          {isManager && (
-                            <Button variant="ghost" size="icon" onClick={() => handleDelete(entry.id)} className="text-destructive hover:text-destructive">
-                              <Trash2 className="h-4 w-4" />
-                            </Button>
-                          )}
-                        </TableCell>
-                      </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
-              </CardContent>
-            </Card>
-          ))}
+                </CardHeader>
+                {isExpanded && (
+                  <CardContent className="p-0">
+                    <Table>
+                      <TableHeader>
+                        <TableRow>
+                          <TableHead>Date</TableHead>
+                          <TableHead>Amount</TableHead>
+                          <TableHead>Method</TableHead>
+                          <TableHead>Type</TableHead>
+                          <TableHead>Description</TableHead>
+                          {isManager && <TableHead></TableHead>}
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {entries.map(entry => (
+                          <TableRow key={entry.id}>
+                            <TableCell className="whitespace-nowrap text-sm">
+                              <div className="flex items-center gap-1">
+                                <Calendar className="h-3 w-3 text-muted-foreground" />
+                                {formatDate(entry.date)}
+                              </div>
+                            </TableCell>
+                            <TableCell className="font-medium tabular-nums">{formatCurrency(entry.amount)}</TableCell>
+                            <TableCell>{methodBadge(entry.paymentMethod)}</TableCell>
+                            <TableCell>{typeBadge(entry.paymentType)}</TableCell>
+                            <TableCell className="text-sm max-w-xs truncate">
+                              {entry.description || '—'}
+                            </TableCell>
+                            {isManager && (
+                              <TableCell>
+                                <Button variant="ghost" size="icon" onClick={() => handleDelete(entry.id)} className="text-destructive hover:text-destructive">
+                                  <Trash2 className="h-4 w-4" />
+                                </Button>
+                              </TableCell>
+                            )}
+                          </TableRow>
+                        ))}
+                      </TableBody>
+                    </Table>
+                  </CardContent>
+                )}
+              </Card>
+            );
+          })}
         </div>
       )}
 
-      {/* Add Record Dialog */}
+      {/* Log Payment Dialog */}
       <Dialog open={showModal} onOpenChange={setShowModal}>
-        <DialogContent className="sm:max-w-lg">
+        <DialogContent className="sm:max-w-md">
           <DialogHeader>
-            <DialogTitle>Add Payroll Record</DialogTitle>
-            <DialogDescription>Select an employee and enter payroll details for the period</DialogDescription>
+            <DialogTitle>Log Payment</DialogTitle>
+            <DialogDescription>Record a compensation payment to an employee</DialogDescription>
           </DialogHeader>
           <form onSubmit={handleSubmit} className="space-y-4">
             <div className="space-y-2">
               <Label htmlFor="payroll-employee">Employee *</Label>
               <Select value={formData.employeeId || ''} onValueChange={id => setFormData({ ...formData, employeeId: id ?? '' })}>
-                <SelectTrigger id="payroll-employee">
-                  <SelectValue placeholder="Select employee" />
-                </SelectTrigger>
+                <SelectTrigger id="payroll-employee"><SelectValue placeholder="Select employee" /></SelectTrigger>
                 <SelectContent>
                   {employees.map(emp => (
-                    <SelectItem key={emp.id} value={emp.id}>
-                      {emp.name} {emp.position && `(${emp.position})`}
-                    </SelectItem>
+                    <SelectItem key={emp.id} value={emp.id}>{emp.name} ({emp.role})</SelectItem>
                   ))}
                 </SelectContent>
               </Select>
             </div>
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
-                <Label htmlFor="payroll-wages">Wages ($)</Label>
-                <Input id="payroll-wages" type="number" step="0.01" value={formData.wages}
-                  onChange={e => setFormData({ ...formData, wages: e.target.value })} required />
+                <Label htmlFor="payroll-amount">Amount ($) *</Label>
+                <Input id="payroll-amount" type="number" step="0.01" value={formData.amount}
+                  onChange={e => setFormData({ ...formData, amount: e.target.value })} required />
               </div>
               <div className="space-y-2">
-                <Label htmlFor="payroll-benefits">Benefits ($)</Label>
-                <Input id="payroll-benefits" type="number" step="0.01" value={formData.benefits}
-                  onChange={e => setFormData({ ...formData, benefits: e.target.value })} />
-                <p className="text-xs text-muted-foreground">For union employees</p>
+                <Label htmlFor="payroll-date">Date *</Label>
+                <Input id="payroll-date" type="date" value={formData.date}
+                  onChange={e => setFormData({ ...formData, date: e.target.value })} required />
               </div>
             </div>
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
-                <Label htmlFor="payroll-taxes">Taxes ($)</Label>
-                <Input id="payroll-taxes" type="number" step="0.01" value={formData.taxes}
-                  onChange={e => setFormData({ ...formData, taxes: e.target.value })} />
+                <Label htmlFor="payroll-method">Payment Method *</Label>
+                <Select value={formData.paymentMethod} onValueChange={v => setFormData({ ...formData, paymentMethod: v ?? 'WIRE' })}>
+                  <SelectTrigger id="payroll-method"><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    {PAYMENT_METHODS.map(m => <SelectItem key={m} value={m}>{methodLabel(m)}</SelectItem>)}
+                  </SelectContent>
+                </Select>
               </div>
               <div className="space-y-2">
-                <Label htmlFor="payroll-deductions">Deductions ($)</Label>
-                <Input id="payroll-deductions" type="number" step="0.01" value={formData.deductions}
-                  onChange={e => setFormData({ ...formData, deductions: e.target.value })} />
+                <Label htmlFor="payroll-type">Payment Type *</Label>
+                <Select value={formData.paymentType} onValueChange={v => setFormData({ ...formData, paymentType: v ?? 'SALARY', description: v !== 'OTHER' ? '' : formData.description })}>
+                  <SelectTrigger id="payroll-type"><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    {PAYMENT_TYPES.map(t => <SelectItem key={t} value={t}>{typeLabel(t)}</SelectItem>)}
+                  </SelectContent>
+                </Select>
               </div>
             </div>
-            <div className="rounded-lg border bg-muted/50 p-3 space-y-1 text-sm">
-              <div className="flex justify-between">
-                <span className="text-muted-foreground">Gross Pay</span>
-                <span className="font-medium tabular-nums">
-                  {formData.wages ? formatCurrency(parseFloat(formData.wages) + (parseFloat(formData.benefits) || 0)) : '$0.00'}
-                </span>
-              </div>
-              <Separator />
-              <div className="flex justify-between">
-                <span className="font-medium">Net Pay</span>
-                <span className="font-medium tabular-nums">
-                  {formData.wages ? formatCurrency(
-                    (parseFloat(formData.wages) + (parseFloat(formData.benefits) || 0)) -
-                    (parseFloat(formData.taxes) || 0) - (parseFloat(formData.deductions) || 0)
-                  ) : '$0.00'}
-                </span>
-              </div>
-            </div>
-            <div className="grid grid-cols-2 gap-4">
+            {formData.paymentType === 'OTHER' && (
               <div className="space-y-2">
-                <Label htmlFor="payroll-start">Period Start *</Label>
-                <Input id="payroll-start" type="date" value={formData.periodStart}
-                  onChange={e => setFormData({ ...formData, periodStart: e.target.value })} required />
+                <Label htmlFor="payroll-desc">Description *</Label>
+                <Textarea id="payroll-desc" value={formData.description}
+                  onChange={e => setFormData({ ...formData, description: e.target.value })}
+                  placeholder="What is this payment for?" rows={2} required />
               </div>
+            )}
+            {formData.paymentType !== 'OTHER' && formData.description && (
               <div className="space-y-2">
-                <Label htmlFor="payroll-end">Period End *</Label>
-                <Input id="payroll-end" type="date" value={formData.periodEnd}
-                  onChange={e => setFormData({ ...formData, periodEnd: e.target.value })} required />
+                <Label htmlFor="payroll-desc">Description</Label>
+                <Textarea id="payroll-desc" value={formData.description}
+                  onChange={e => setFormData({ ...formData, description: e.target.value })}
+                  placeholder="Optional note" rows={2} />
               </div>
-            </div>
-            <div className="flex items-center gap-2">
-              <Checkbox id="payroll-paid" checked={formData.paid}
-                onCheckedChange={v => setFormData({ ...formData, paid: !!v })} />
-              <Label htmlFor="payroll-paid">Mark as paid</Label>
-            </div>
+            )}
             <DialogFooter>
               <Button type="button" variant="outline" onClick={() => setShowModal(false)}>Cancel</Button>
-              <Button type="submit">Add Record</Button>
+              <Button type="submit">Log Payment</Button>
             </DialogFooter>
           </form>
         </DialogContent>
