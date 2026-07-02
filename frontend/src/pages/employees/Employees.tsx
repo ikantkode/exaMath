@@ -110,6 +110,7 @@ const Employees = () => {
     try {
       const roleValue = formData.role === 'Other' ? formData.customRole : formData.role;
       if (!roleValue) { toast.error('Please select a role or enter a custom one'); return; }
+      if (!formData.isPerDiem && !formData.salary && !formData.hourlyRate) { toast.error('Yearly salary or hourly rate is required for non per-diem employees'); return; }
       const body: any = {
         name: formData.name,
         email: formData.email,
@@ -441,9 +442,9 @@ const Employees = () => {
             {!formData.isPerDiem && (
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-2">
-                  <Label htmlFor="emp-salary">Yearly Salary ($)</Label>
+                  <Label htmlFor="emp-salary">Yearly Salary ($) *</Label>
                   <Input id="emp-salary" type="number" step="0.01" value={formData.salary}
-                    onChange={e => setFormData({ ...formData, salary: e.target.value })} />
+                    onChange={e => setFormData({ ...formData, salary: e.target.value })} required />
                 </div>
                 <div className="space-y-2">
                   <Label htmlFor="emp-rate">Hourly Rate ($)</Label>
@@ -497,11 +498,11 @@ const Employees = () => {
                 onChange={e => setEmpPeriodData({ ...empPeriodData, endDate: e.target.value })} />
             </div>
             <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <Label htmlFor="emp-salary">Yearly Salary ($)</Label>
-                <Input id="emp-salary" type="number" step="0.01" value={empPeriodData.salary}
-                  onChange={e => setEmpPeriodData({ ...empPeriodData, salary: e.target.value })} />
-              </div>
+             <div className="space-y-2">
+                  <Label htmlFor="emp-salary">Yearly Salary ($) *</Label>
+                  <Input id="emp-salary" type="number" step="0.01" value={empPeriodData.salary}
+                    onChange={e => setEmpPeriodData({ ...empPeriodData, salary: e.target.value })} required />
+                </div>
               <div className="space-y-2">
                 <Label htmlFor="emp-rate">Hourly Rate ($)</Label>
                 <Input id="emp-rate" type="number" step="0.01" value={empPeriodData.hourlyRate}

@@ -55,23 +55,38 @@ router.post('/', authenticate, authorize('OWNER', 'MANAGER'), async (req: AuthRe
 router.put('/:id', authenticate, authorize('OWNER', 'MANAGER'), async (req: AuthRequest, res) => {
   try {
     const { id } = req.params;
-    const employee = await prisma.employee.findUnique({ where: { id } });
+    const employee = await prisma.employee.findUnique({
+      where: { id },
+      include: { employmentPeriods: { where: { endDate: null }, take: 1 } },
+    });
     if (!employee) return res.status(404).json({ error: 'Employee not found' });
-    const { name, email, phone, role, address, compensationType, isUnion, dependents, isPerDiem, notes } = req.body;
+    const { name, email, phone, role, address, compensationType, isUnion, dependents, isPerDiem, notes, salary, hourlyRate } = req.body;
+    const employeeData: any = {
+      ...(name !== undefined && { name }),
+      ...(email !== undefined && { email }),
+      ...(phone !== undefined && { phone }),
+      ...(role !== undefined && { role }),
+      ...(address !== undefined && { address }),
+      ...(compensationType !== undefined && { compensationType }),
+      ...(typeof isUnion !== 'undefined' && { isUnion: !!isUnion }),
+      ...(dependents !== undefined && { dependents: parseInt(dependents) || 0 }),
+      ...(typeof isPerDiem !== 'undefined' && { isPerDiem: !!isPerDiem }),
+      ...(notes !== undefined && { notes: notes || null }),
+    };
+    if (employee.employmentPeriods.length > 0 && (salary !== undefined || hourlyRate !== undefined)) {
+      employeeData.employmentPeriods = {
+        update: {
+          where: { id: employee.employmentPeriods[0].id },
+          data: {
+            ...(salary !== undefined && { salary: salary ? parseFloat(salary) : null }),
+            ...(hourlyRate !== undefined && { hourlyRate: hourlyRate ? parseFloat(hourlyRate) : null }),
+          },
+        },
+      };
+    }
     const updated = await prisma.employee.update({
       where: { id },
-      data: {
-        ...(name !== undefined && { name }),
-        ...(email !== undefined && { email }),
-        ...(phone !== undefined && { phone }),
-        ...(role !== undefined && { role }),
-        ...(address !== undefined && { address }),
-        ...(compensationType !== undefined && { compensationType }),
-        ...(typeof isUnion !== 'undefined' && { isUnion: !!isUnion }),
-        ...(dependents !== undefined && { dependents: parseInt(dependents) || 0 }),
-        ...(typeof isPerDiem !== 'undefined' && { isPerDiem: !!isPerDiem }),
-        ...(notes !== undefined && { notes: notes || null }),
-      },
+      data: employeeData,
       include: {
         employmentPeriods: { orderBy: { startDate: 'desc' } },
       },
@@ -90,6 +105,10 @@ router.post('/:id/employment-periods', authenticate, authorize('OWNER', 'MANAGER
 
     const employee = await prisma.employee.findUnique({ where: { id } });
     if (!employee) return res.status(404).json({ error: 'Employee not found' });
+
+    if (!employee.isPerDiem && (!salary && !hourlyRate)) {
+      return res.status(400).json({ error: 'Salary or hourly rate is required for non per-diem employees' });
+    }
 
     const newPeriod = await prisma.employmentPeriod.create({
       data: {
