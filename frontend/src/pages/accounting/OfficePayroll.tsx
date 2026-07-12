@@ -206,7 +206,7 @@ const OfficePayroll = () => {
           <div className="flex flex-wrap items-end gap-4">
             <div className="space-y-2">
               <Label>Employee</Label>
-              <Select value={filters.employeeId} onValueChange={v => setFilters({ ...filters, employeeId: v })}>
+              <Select value={filters.employeeId} onValueChange={v => setFilters({ ...filters, employeeId: v ?? '' })}>
                 <SelectTrigger className="w-48"><SelectValue placeholder="All" /></SelectTrigger>
                 <SelectContent>
                   {employees.map(emp => <SelectItem key={emp.id} value={emp.id}>{emp.name}</SelectItem>)}
@@ -215,7 +215,7 @@ const OfficePayroll = () => {
             </div>
             <div className="space-y-2">
               <Label>Type</Label>
-              <Select value={filters.paymentType} onValueChange={v => setFilters({ ...filters, paymentType: v })}>
+              <Select value={filters.paymentType} onValueChange={v => setFilters({ ...filters, paymentType: v ?? '' })}>
                 <SelectTrigger className="w-36"><SelectValue placeholder="All" /></SelectTrigger>
                 <SelectContent>
                   {PAYMENT_TYPES.map(t => <SelectItem key={t} value={t}>{typeLabel(t)}</SelectItem>)}
@@ -224,7 +224,7 @@ const OfficePayroll = () => {
             </div>
             <div className="space-y-2">
               <Label>Method</Label>
-              <Select value={filters.paymentMethod} onValueChange={v => setFilters({ ...filters, paymentMethod: v })}>
+              <Select value={filters.paymentMethod} onValueChange={v => setFilters({ ...filters, paymentMethod: v ?? '' })}>
                 <SelectTrigger className="w-36"><SelectValue placeholder="All" /></SelectTrigger>
                 <SelectContent>
                   {PAYMENT_METHODS.map(m => <SelectItem key={m} value={m}>{methodLabel(m)}</SelectItem>)}
