@@ -370,7 +370,7 @@ const Employees = () => {
               </div>
               <div className="space-y-2">
                 <Label htmlFor="emp-role">Role *</Label>
-                <Select value={formData.role} onValueChange={v => setFormData({ ...formData, role: v, customRole: v === 'Other' ? '' : v })}>
+                <Select value={formData.role} onValueChange={v => setFormData({ ...formData, role: v ?? '', customRole: v === 'Other' ? '' : v ?? '' })}>
                   <SelectTrigger id="emp-role"><SelectValue /></SelectTrigger>
                   <SelectContent>
                     {ROLES.map(r => <SelectItem key={r} value={r}>{r}</SelectItem>)}
