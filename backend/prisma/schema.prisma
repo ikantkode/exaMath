@@ -49,6 +49,20 @@ enum EmployeeStatus {
   TERMINATED
 }
 
+enum PaymentMethod {
+  WIRE
+  ZELLE
+  CASH
+  CHECK
+  OTHER
+}
+
+enum PaymentType {
+  SALARY
+  BONUS
+  OTHER
+}
+
 model User {
   id            String    @id @default(uuid())
   name          String
@@ -232,7 +246,25 @@ model Employee {
   notes               String?
   createdAt           DateTime          @default(now())
   updatedAt           DateTime          @updatedAt
+  payrollRecords      OfficePayroll[]
   paymentLogs         PaymentLog[]
+}
+
+// Office payroll records (per period)
+model OfficePayroll {
+  id          String   @id @default(uuid())
+  employeeId  String
+  employee    Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  grossPay    Float
+  wages       Float
+  benefits    Float   @default(0)
+  taxes       Float   @default(0)
+  deductions  Float   @default(0)
+  netPay      Float
+  periodStart DateTime
+  periodEnd   DateTime
+  paid        Boolean @default(false)
+  createdAt   DateTime @default(now())
 }
 
 // Employment periods (handles re-hires)
@@ -251,35 +283,19 @@ model EmploymentPeriod {
   @@unique([employeeId, startDate])
 }
 
-// Payment method enum for payment log
-enum PaymentMethod {
-  WIRE
-  ZELLE
-  CASH
-  CHECK
-  OTHER
-}
-
-// Payment type enum
-enum PaymentType {
-  SALARY
-  BONUS
-  OTHER
-}
-
 // Payment log (compensation records)
 model PaymentLog {
-  id              String           @id @default(uuid())
-  employeeId      String
-  employee        Employee         @relation(fields: [employeeId], references: [id], onDelete: Cascade)
-  employmentPeriodId String?
-  employmentPeriod EmploymentPeriod? @relation(fields: [employmentPeriodId], references: [id], onDelete: SetNull)
-  amount          Float
-  date            DateTime
-  paymentMethod   PaymentMethod
-  paymentType     PaymentType
-  description     String?
-  createdAt       DateTime         @default(now())
+  id                   String           @id @default(uuid())
+  employeeId           String
+  employee             Employee         @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  employmentPeriodId   String?
+  employmentPeriod     EmploymentPeriod? @relation(fields: [employmentPeriodId], references: [id], onDelete: SetNull)
+  amount               Float
+  date                 DateTime
+  paymentMethod        PaymentMethod
+  paymentType          PaymentType
+  description          String?
+  createdAt            DateTime         @default(now())
 }
 
 // Field worker master record
