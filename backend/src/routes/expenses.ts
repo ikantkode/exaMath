@@ -26,10 +26,16 @@ router.get('/', authenticate, async (req: AuthRequest, res) => {
 
 router.post('/', authenticate, authorize('OWNER', 'MANAGER'), async (req: AuthRequest, res) => {
   try {
-    const { amount, description, expenseType, date, categoryId, projectId } = req.body;
+    const { amount, currency, conversionRate, description, expenseType, date, categoryId, projectId } = req.body;
+    const cleanCurrency = currency || 'USD';
+    const rate = cleanCurrency === 'PKR' ? (conversionRate || 0) : 1;
+    const amountUSD = cleanCurrency === 'PKR' ? amount * rate : amount;
     const expense = await prisma.expense.create({
       data: {
         amount,
+        currency: cleanCurrency,
+        conversionRate: cleanCurrency === 'PKR' ? rate : null,
+        amountUSD,
         description,
         expenseType,
         date: date ? new Date(date) : new Date(),
@@ -48,9 +54,24 @@ router.post('/', authenticate, authorize('OWNER', 'MANAGER'), async (req: AuthRe
 router.put('/:id', authenticate, authorize('OWNER', 'MANAGER'), async (req: AuthRequest, res) => {
   try {
     const old = await prisma.expense.findUnique({ where: { id: req.params.id } });
+    const { amount, currency, conversionRate, description, expenseType, date, categoryId, projectId } = req.body;
+    const existing = old as any;
+    const cleanCurrency = currency || existing?.currency || 'USD';
+    const rate = cleanCurrency === 'PKR' ? (conversionRate || existing?.conversionRate || 0) : 1;
+    const amountUSD = cleanCurrency === 'PKR' ? amount * rate : amount;
     const expense = await prisma.expense.update({
       where: { id: req.params.id },
-      data: req.body,
+      data: {
+        amount,
+        currency: cleanCurrency,
+        conversionRate: cleanCurrency === 'PKR' ? rate : null,
+        amountUSD,
+        description,
+        expenseType,
+        date: date ? new Date(date) : undefined,
+        categoryId: categoryId || null,
+        projectId,
+      },
     });
     await logAction(req.user!.id, 'UPDATE', 'Expense', req.params.id, JSON.stringify(old), JSON.stringify(req.body));
     res.json(expense);

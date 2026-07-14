@@ -19,6 +19,9 @@ import { Textarea } from '@/components/ui/textarea';
 interface Expense {
   id: string;
   amount: number;
+  currency: string;
+  conversionRate?: number | null;
+  amountUSD: number;
   description: string;
   expenseType: string;
   date: string;
@@ -66,7 +69,15 @@ const Expenses = () => {
   const [expenses, setExpenses] = useState<Expense[]>([]);
   const [loading, setLoading] = useState(true);
   const [showExpenseModal, setShowExpenseModal] = useState(false);
-  const [formData, setFormData] = useState({ amount: '', description: '', expenseType: 'MATERIAL', date: new Date().toISOString().split('T')[0], categoryId: '' });
+  const [formData, setFormData] = useState({ amount: '', description: '', expenseType: 'MATERIAL', date: new Date().toISOString().split('T')[0], categoryId: '', currency: 'USD', conversionRate: '' });
+
+  const amountUSD = (() => {
+    const amt = parseFloat(formData.amount);
+    if (formData.currency === 'PKR' && formData.conversionRate) {
+      return amt * parseFloat(formData.conversionRate);
+    }
+    return amt;
+  })();
 
   const [agreements, setAgreements] = useState<SubAgreement[]>([]);
   const [showAgreementModal, setShowAgreementModal] = useState(false);
@@ -93,8 +104,13 @@ const Expenses = () => {
   // Expense handlers
   const handleSubmitExpense = async (e: React.FormEvent) => {
     e.preventDefault();
+    const amt = parseFloat(formData.amount);
+    const rate = formData.currency === 'PKR' && formData.conversionRate ? parseFloat(formData.conversionRate) : undefined;
     await api.post('/expenses/', {
-      amount: parseFloat(formData.amount),
+      amount: amt,
+      currency: formData.currency,
+      conversionRate: rate,
+      amountUSD: formData.currency === 'PKR' ? amt * (rate || 0) : amt,
       description: formData.description,
       expenseType: formData.expenseType,
       date: formData.date,
@@ -102,7 +118,7 @@ const Expenses = () => {
       projectId: id,
     });
     setShowExpenseModal(false);
-    setFormData({ amount: '', description: '', expenseType: 'MATERIAL', date: new Date().toISOString().split('T')[0], categoryId: '' });
+    setFormData({ amount: '', description: '', expenseType: 'MATERIAL', date: new Date().toISOString().split('T')[0], categoryId: '', currency: 'USD', conversionRate: '' });
     fetchExpenses();
     toast.success('Expense recorded');
   };
@@ -114,7 +130,7 @@ const Expenses = () => {
     toast.success('Expense deleted');
   };
 
-  const totalAmount = expenses.reduce((sum, e) => sum + e.amount, 0);
+  const totalAmount = expenses.reduce((sum, e) => sum + (e.amountUSD || e.amount), 0);
 
   const typeVariants: Record<string, React.ComponentProps<typeof Badge>['variant']> = {
     LABOR: 'default',
@@ -305,7 +321,8 @@ const Expenses = () => {
                       <TableHead>Description</TableHead>
                       <TableHead>Type</TableHead>
                       <TableHead>Category</TableHead>
-                      <TableHead className="text-right">Amount</TableHead>
+                      <TableHead className="text-right">Original</TableHead>
+                      <TableHead className="text-right">USD Equivalent</TableHead>
                       <TableHead>Logged By</TableHead>
                       <TableHead></TableHead>
                     </TableRow>
@@ -317,7 +334,15 @@ const Expenses = () => {
                         <TableCell>{expense.description}</TableCell>
                         <TableCell><Badge variant={typeVariants[expense.expenseType] || 'secondary'}>{expense.expenseType}</Badge></TableCell>
                         <TableCell>{expense.category?.name || '-'}</TableCell>
-                        <TableCell className="text-right font-medium tabular-nums">{formatCurrency(expense.amount)}</TableCell>
+                        <TableCell className="text-right tabular-nums">
+                          {expense.currency === 'PKR' ? 'Rs ' : '$'}{expense.amount.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                          {expense.currency === 'PKR' && expense.conversionRate && (
+                            <span className="ml-1 text-xs text-muted-foreground">(@{expense.conversionRate})</span>
+                          )}
+                        </TableCell>
+                        <TableCell className="text-right font-medium tabular-nums">
+                          ${((expense.amountUSD || expense.amount)).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                        </TableCell>
                         <TableCell>{expense.createdBy.name}</TableCell>
                         <TableCell>
                           <Button variant="ghost" size="icon" onClick={() => handleDeleteExpense(expense.id)} className="text-destructive hover:text-destructive">
@@ -398,10 +423,31 @@ const Expenses = () => {
         <DialogContent className="sm:max-w-md">
           <DialogHeader><DialogTitle>Add Expense</DialogTitle></DialogHeader>
           <form onSubmit={handleSubmitExpense} className="space-y-4">
-            <div className="space-y-2">
-              <Label htmlFor="amount">Amount ($)</Label>
-              <Input id="amount" type="number" step="0.01" value={formData.amount} onChange={e => setFormData({ ...formData, amount: e.target.value })} required />
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label htmlFor="currency">Currency</Label>
+                <Select value={formData.currency || 'USD'} onValueChange={value => setFormData({ ...formData, currency: value ?? 'USD', conversionRate: '' })}>
+                  <SelectTrigger id="currency"><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="USD">USD ($)</SelectItem>
+                    <SelectItem value="PKR">PKR (Rs)</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="amount">Amount</Label>
+                <Input id="amount" type="number" step="0.01" value={formData.amount} onChange={e => setFormData({ ...formData, amount: e.target.value })} required />
+              </div>
             </div>
+            {formData.currency === 'PKR' && (
+              <div className="space-y-2">
+                <Label htmlFor="conversionRate">PKR → USD Rate</Label>
+                <Input id="conversionRate" type="number" step="0.0001" placeholder="e.g. 278.50" value={formData.conversionRate} onChange={e => setFormData({ ...formData, conversionRate: e.target.value })} required />
+                {formData.amount && formData.conversionRate && (
+                  <p className="text-xs text-muted-foreground">USD equivalent: ${amountUSD.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</p>
+                )}
+              </div>
+            )}
             <div className="space-y-2">
               <Label htmlFor="description">Description</Label>
               <Input id="description" value={formData.description} onChange={e => setFormData({ ...formData, description: e.target.value })} required />
