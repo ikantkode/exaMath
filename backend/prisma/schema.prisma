@@ -102,6 +102,9 @@ model BudgetCategory {
 model Expense {
   id              String        @id @default(uuid())
   amount          Float
+  currency        String        @default("USD")
+  conversionRate  Float?
+  amountUSD       Float
   description     String
   expenseType     ExpenseType
   date            DateTime      @default(now())

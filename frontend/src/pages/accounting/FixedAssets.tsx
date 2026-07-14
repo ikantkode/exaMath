@@ -217,6 +217,7 @@ const FixedAssets = () => {
                   <SelectItem value="Tools">Tools</SelectItem>
                   <SelectItem value="Furniture">Furniture</SelectItem>
                   <SelectItem value="Technology">Technology</SelectItem>
+                  <SelectItem value="Office Rental">Office Rental</SelectItem>
                   <SelectItem value="Other">Other</SelectItem>
                 </SelectContent>
               </Select>

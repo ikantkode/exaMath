@@ -7,7 +7,7 @@ const router = Router();
 router.get('/', authenticate, authorize('OWNER', 'MANAGER'), async (_req: AuthRequest, res) => {
   try {
     const projects = await prisma.project.findMany();
-    const totalExpenses = await prisma.expense.aggregate({ _sum: { amount: true } });
+    const totalExpenses = await prisma.expense.aggregate({ _sum: { amountUSD: true } });
     const totalTimesheets = await prisma.timesheet.aggregate({ _sum: { hours: true } });
     const officePayroll = await prisma.officePayroll.aggregate({ _sum: { netPay: true } });
     const fixedAssets = await prisma.fixedAsset.aggregate({ _sum: { currentValue: true, purchasePrice: true } });
