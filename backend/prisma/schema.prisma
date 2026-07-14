@@ -283,23 +283,6 @@ model EmploymentPeriod {
   @@unique([employeeId, startDate])
 }
 
-// Payment method enum for payment log
-// Payment method enum for payment log
-enum PaymentMethod {
-  WIRE
-  ZELLE
-  CASH
-  CHECK
-  OTHER
-}
-
-// Payment type enum
-enum PaymentType {
-  SALARY
-  BONUS
-  OTHER
-}
-
 // Payment log (compensation records)
 model PaymentLog {
   id                   String           @id @default(uuid())
