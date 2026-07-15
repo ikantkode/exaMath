@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { api, formatCurrency, formatDate } from '../../utils/api';
 import { useAuth } from '../../context/AuthContext';
-import { ArrowLeft, Plus, Trash2, ClipboardList, TrendingUp, FileBarChart, Lock, Unlock, FileUp, FileText, Download, X } from 'lucide-react';
+import { ArrowLeft, Plus, Trash2, ClipboardList, TrendingUp, FileBarChart, Lock, Unlock, FileUp, FileText, Download, X, Repeat } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
@@ -88,10 +88,104 @@ const Expenses = () => {
   const [uploading, setUploading] = useState(false);
   const [uploadingCO, setUploadingCO] = useState<string | null>(null);
 
+  // Recurring expenses
+  interface RecurringExpense {
+    id: string;
+    projectId: string;
+    name: string;
+    description: string | null;
+    type: string;
+    amount: number;
+    currency: string;
+    conversionRate?: number | null;
+    amountUSD: number;
+    frequency: string;
+    isActive: boolean;
+    createdAt: string;
+    updatedAt: string;
+  }
+  const [recurringExpenses, setRecurringExpenses] = useState<RecurringExpense[]>([]);
+  const [showRecurringModal, setShowRecurringModal] = useState(false);
+  const [recurringForm, setRecurringForm] = useState({
+    name: '', type: 'Office Rental', description: '', amount: '', currency: 'USD', conversionRate: '', frequency: 'Monthly'
+  });
+  const [editingRecurring, setEditingRecurring] = useState<string | null>(null);
+
+  const recurringAmountUSD = (() => {
+    const amt = parseFloat(recurringForm.amount);
+    if (recurringForm.currency === 'PKR' && recurringForm.conversionRate) {
+      return amt * parseFloat(recurringForm.conversionRate);
+    }
+    return amt;
+  })();
+
   useEffect(() => {
     fetchExpenses();
     fetchAgreements();
+    fetchRecurringExpenses();
   }, [id]);
+
+  const fetchRecurringExpenses = () => {
+    api.get<RecurringExpense[]>(`/recurring-expenses/?projectId=${id}`).then(setRecurringExpenses).catch(() => {});
+  };
+
+  const handleSaveRecurring = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const amt = parseFloat(recurringForm.amount);
+    const rate = recurringForm.currency === 'PKR' && recurringForm.conversionRate ? parseFloat(recurringForm.conversionRate) : undefined;
+    const body = {
+      projectId: id,
+      name: recurringForm.name,
+      description: recurringForm.description || null,
+      type: recurringForm.type,
+      amount: amt,
+      currency: recurringForm.currency,
+      conversionRate: rate,
+      amountUSD: recurringForm.currency === 'PKR' ? amt * (rate || 0) : amt,
+      frequency: recurringForm.frequency,
+    };
+    if (editingRecurring) {
+      await api.put(`/recurring-expenses/${editingRecurring}`, body);
+      toast.success('Recurring expense updated');
+    } else {
+      await api.post('/recurring-expenses/', body);
+      toast.success('Recurring expense added');
+    }
+    setShowRecurringModal(false);
+    setEditingRecurring(null);
+    setRecurringForm({ name: '', type: 'Office Rental', description: '', amount: '', currency: 'USD', conversionRate: '', frequency: 'Monthly' });
+    fetchRecurringExpenses();
+  };
+
+  const handleEditRecurring = (exp: RecurringExpense) => {
+    setEditingRecurring(exp.id);
+    setRecurringForm({
+      name: exp.name,
+      type: exp.type,
+      description: exp.description || '',
+      amount: String(exp.amount),
+      currency: exp.currency,
+      conversionRate: exp.conversionRate ? String(exp.conversionRate) : '',
+      frequency: exp.frequency,
+    });
+    setShowRecurringModal(true);
+  };
+
+  const handleDeleteRecurring = async (id: string) => {
+    if (!confirm('Delete this recurring expense?')) return;
+    await api.delete(`/recurring-expenses/${id}`);
+    fetchRecurringExpenses();
+    toast.success('Recurring expense deleted');
+  };
+
+  const toggleActiveRecurring = async (exp: RecurringExpense) => {
+    await api.put(`/recurring-expenses/${exp.id}`, { isActive: !exp.isActive });
+    fetchRecurringExpenses();
+  };
+
+  const totalRecurringMonthly = recurringExpenses
+    .filter(e => e.isActive)
+    .reduce((sum, e) => sum + (e.amountUSD / (e.frequency === 'Monthly' ? 1 : e.frequency === 'Weekly' ? 4.33 : e.frequency === 'Quarterly' ? 0.333 : 0.0833)), 0);
 
   const fetchExpenses = () => {
     api.get<Expense[]>(`/expenses/?projectId=${id}`).then(setExpenses).finally(() => setLoading(false));
@@ -255,11 +349,114 @@ const Expenses = () => {
         </div>
       </div>
 
-      <Tabs defaultValue="expenses">
-        <TabsList className="grid w-full max-w-md grid-cols-2">
+      <Tabs defaultValue="recurring">
+        <TabsList className="grid w-full max-w-md grid-cols-3">
+          <TabsTrigger value="recurring">Recurring</TabsTrigger>
           <TabsTrigger value="expenses">Expenses</TabsTrigger>
           <TabsTrigger value="subcontractors">Subcontractors</TabsTrigger>
         </TabsList>
+
+        {/* RECURRING EXPENSES TAB */}
+        <TabsContent value="recurring" className="space-y-6">
+          <div className="flex justify-end">
+            <Button onClick={() => { setEditingRecurring(null); setRecurringForm({ name: '', type: 'Office Rental', description: '', amount: '', currency: 'USD', conversionRate: '', frequency: 'Monthly' }); setShowRecurringModal(true); }}>
+              <Plus className="h-4 w-4" /> Add Recurring
+            </Button>
+          </div>
+
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+            <Card>
+              <CardHeader className="pb-2">
+                <CardDescription>Monthly Total</CardDescription>
+                <CardTitle className="text-2xl font-semibold tabular-nums">{formatCurrency(totalRecurringMonthly)}</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <Separator />
+                <p className="mt-2 text-xs text-muted-foreground">Projected monthly cost</p>
+              </CardContent>
+            </Card>
+            <Card>
+              <CardHeader className="pb-2">
+                <CardDescription>Active Items</CardDescription>
+                <CardTitle className="text-2xl font-semibold tabular-nums">{recurringExpenses.filter(e => e.isActive).length}</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <Separator />
+                <p className="mt-2 text-xs text-muted-foreground">Of {recurringExpenses.length} total</p>
+              </CardContent>
+            </Card>
+            <Card>
+              <CardHeader className="pb-2">
+                <CardDescription>Annual Projection</CardDescription>
+                <CardTitle className="text-2xl font-semibold tabular-nums">{formatCurrency(totalRecurringMonthly * 12)}</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <Separator />
+                <p className="mt-2 text-xs text-muted-foreground">Based on monthly average</p>
+              </CardContent>
+            </Card>
+          </div>
+
+          {recurringExpenses.length === 0 ? (
+            <Card>
+              <CardContent className="flex flex-col items-center py-12">
+                <Repeat className="mb-3 h-12 w-12 text-muted-foreground" />
+                <p className="text-muted-foreground">No recurring expenses recorded</p>
+                <p className="text-xs text-muted-foreground mt-1">Office rental, utilities, insurance, internet</p>
+              </CardContent>
+            </Card>
+          ) : (
+            <Card>
+              <CardContent className="p-0">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Name</TableHead>
+                      <TableHead>Type</TableHead>
+                      <TableHead>Frequency</TableHead>
+                      <TableHead className="text-right">Amount</TableHead>
+                      <TableHead className="text-right">Monthly (USD)</TableHead>
+                      <TableHead>Active</TableHead>
+                      <TableHead></TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {recurringExpenses.map(exp => (
+                      <TableRow key={exp.id}>
+                        <TableCell className="font-medium">{exp.name}</TableCell>
+                        <TableCell><Badge variant={exp.isActive ? 'default' : 'secondary'}>{exp.type}</Badge></TableCell>
+                        <TableCell>{exp.frequency}</TableCell>
+                        <TableCell className="text-right tabular-nums">
+                          {exp.currency === 'PKR' ? 'Rs ' : '$'}{exp.amount.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                          {exp.currency === 'PKR' && exp.conversionRate && (
+                            <span className="ml-1 text-xs text-muted-foreground">(@{exp.conversionRate})</span>
+                          )}
+                        </TableCell>
+                        <TableCell className="text-right font-medium tabular-nums">{formatCurrency(exp.amountUSD / (exp.frequency === 'Monthly' ? 1 : exp.frequency === 'Weekly' ? 4.33 : exp.frequency === 'Quarterly' ? 0.333 : 0.0833))}</TableCell>
+                        <TableCell>
+                          <button
+                            onClick={() => toggleActiveRecurring(exp)}
+                            className={`px-2 py-1 rounded text-xs font-medium ${exp.isActive ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-500'}`}
+                          >
+                            {exp.isActive ? 'Active' : 'Paused'}
+                          </button>
+                        </TableCell>
+                        <TableCell className="flex gap-1">
+                          {canWrite && (
+                            <>
+                              <Button variant="ghost" size="icon" onClick={() => handleEditRecurring(exp)} className="h-7 w-7"><Repeat className="h-3.5 w-3.5" /></Button>
+                              <Button variant="ghost" size="icon" onClick={() => handleDeleteRecurring(exp.id)} className="h-7 w-7 text-destructive hover:text-destructive"><Trash2 className="h-3.5 w-3.5" /></Button>
+                            </>
+                          )}
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </CardContent>
+            </Card>
+          )}
+        </TabsContent>
 
         {/* EXPENSES TAB */}
         <TabsContent value="expenses" className="space-y-6">
@@ -471,6 +668,70 @@ const Expenses = () => {
             <div className="flex justify-end gap-3">
               <Button type="button" variant="secondary" onClick={() => setShowExpenseModal(false)}>Cancel</Button>
               <Button type="submit">Add Expense</Button>
+            </div>
+          </form>
+        </DialogContent>
+      </Dialog>
+
+      {/* RECURRING EXPENSE DIALOG */}
+      <Dialog open={showRecurringModal} onOpenChange={setShowRecurringModal}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader><DialogTitle>{editingRecurring ? 'Edit Recurring Expense' : 'Add Recurring Expense'}</DialogTitle></DialogHeader>
+          <form onSubmit={handleSaveRecurring} className="space-y-4">
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label htmlFor="recName">Name</Label>
+                <Input id="recName" value={recurringForm.name} onChange={e => setRecurringForm({ ...recurringForm, name: e.target.value })} placeholder="e.g. Office Rental" required />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="recType">Type</Label>
+                <Input id="recType" value={recurringForm.type} onChange={e => setRecurringForm({ ...recurringForm, type: e.target.value })} required />
+              </div>
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="recDesc">Description</Label>
+              <Input id="recDesc" value={recurringForm.description} onChange={e => setRecurringForm({ ...recurringForm, description: e.target.value })} placeholder="Brief description..." />
+            </div>
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label htmlFor="recAmount">Amount</Label>
+                <Input id="recAmount" type="number" step="0.01" value={recurringForm.amount} onChange={e => setRecurringForm({ ...recurringForm, amount: e.target.value })} required />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="recCurrency">Currency</Label>
+                <Select value={recurringForm.currency} onValueChange={value => setRecurringForm({ ...recurringForm, currency: value ?? 'USD', conversionRate: '' })}>
+                  <SelectTrigger id="recCurrency"><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="USD">USD ($)</SelectItem>
+                    <SelectItem value="PKR">PKR (Rs)</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+            {recurringForm.currency === 'PKR' && (
+              <div className="space-y-2">
+                <Label htmlFor="recConversionRate">PKR → USD Rate</Label>
+                <Input id="recConversionRate" type="number" step="0.0001" placeholder="e.g. 278.50" value={recurringForm.conversionRate} onChange={e => setRecurringForm({ ...recurringForm, conversionRate: e.target.value })} required />
+                {recurringForm.amount && recurringForm.conversionRate && (
+                  <p className="text-xs text-muted-foreground">USD equivalent: ${recurringAmountUSD.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</p>
+                )}
+              </div>
+            )}
+            <div className="space-y-2">
+              <Label htmlFor="recFrequency">Frequency</Label>
+              <Select value={recurringForm.frequency} onValueChange={value => setRecurringForm({ ...recurringForm, frequency: value ?? 'Monthly' })}>
+                <SelectTrigger id="recFrequency"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="Weekly">Weekly</SelectItem>
+                  <SelectItem value="Monthly">Monthly</SelectItem>
+                  <SelectItem value="Quarterly">Quarterly</SelectItem>
+                  <SelectItem value="Annually">Annually</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="flex justify-end gap-3">
+              <Button type="button" variant="secondary" onClick={() => { setShowRecurringModal(false); setEditingRecurring(null); }}>Cancel</Button>
+              <Button type="submit">{editingRecurring ? 'Update' : 'Add'}</Button>
             </div>
           </form>
         </DialogContent>
