@@ -14,6 +14,7 @@ import fixedAssetRoutes from './routes/fixedAssets';
 import payoutRoutes from './routes/payouts';
 import auditLogRoutes from './routes/auditLogs';
 import dashboardRoutes from './routes/dashboard';
+import recurringExpenseRoutes from './routes/recurringExpenses';
 import sovRoutes from './routes/schedulesOfValue';
 import userRoutes from './routes/users';
 import employeeRoutes from './routes/employees';
@@ -54,6 +55,8 @@ app.use('/api/employees', employeeRoutes);
 app.use('/api/field-workers', fieldWorkerRoutes);
 app.use('/api/subcontractors', subcontractorRoutes);
 app.use('/api/schedules', scheduleRoutes);
+app.use('/api/recurring-expenses', recurringExpenseRoutes);
+app.use('/api/recurring-expenses', recurringExpenseRoutes);
 
 app.get('/api/health', (_req, res) => {
   res.json({ status: 'ok', timestamp: new Date().toISOString() });
