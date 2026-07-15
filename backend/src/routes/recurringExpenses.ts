@@ -23,7 +23,7 @@ router.get('/', authenticate, async (req: AuthRequest, res) => {
 
 router.post('/', authenticate, authorize('OWNER', 'MANAGER'), async (req: AuthRequest, res) => {
   try {
-    const { projectId, name, description, type, amount, currency, conversionRate, amountUSD, frequency } = req.body;
+    const { projectId, name, description, type, amount, currency, conversionRate, frequency } = req.body;
     if (!name || !type || amount === undefined || amount === null) {
       return res.status(400).json({ error: 'Name, type, and amount are required' });
     }
@@ -54,7 +54,7 @@ router.post('/', authenticate, authorize('OWNER', 'MANAGER'), async (req: AuthRe
 router.put('/:id', authenticate, authorize('OWNER', 'MANAGER'), async (req: AuthRequest, res) => {
   try {
     const old = await prisma.recurringExpense.findUnique({ where: { id: req.params.id } });
-    const { name, description, type, amount, currency, conversionRate, amountUSD, frequency, isActive } = req.body;
+    const { name, description, type, amount, currency, conversionRate, frequency, isActive } = req.body;
     const existing = old as any;
     const cleanCurrency = currency || existing?.currency || 'USD';
     const rate = cleanCurrency === 'PKR' ? (conversionRate || existing?.conversionRate || 0) : 1;
