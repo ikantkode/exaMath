@@ -65,56 +65,39 @@ UPDATE "Payout" SET "amountUSD" = "amount", "conversionRate" = 1, "currency" = '
 ALTER TABLE "Payout" ALTER COLUMN "amountUSD" SET NOT NULL;
 ALTER TABLE "Payout" ALTER COLUMN "currency" SET NOT NULL;
 
--- CreateTable
-CREATE TABLE "EmploymentPeriod" (
-    "id" TEXT NOT NULL,
-    "employeeId" TEXT NOT NULL,
-    "startDate" TIMESTAMP(3) NOT NULL,
-    "endDate" TIMESTAMP(3),
-    "salary" DOUBLE PRECISION,
-    "hourlyRate" DOUBLE PRECISION,
-    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    "updatedAt" TIMESTAMP(3) NOT NULL,
+-- Add missing columns to EmploymentPeriod if not exists
+DO $$ BEGIN
+  IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'EmploymentPeriod' AND column_name = 'hourlyRate') THEN
+    ALTER TABLE "EmploymentPeriod" ADD COLUMN "hourlyRate" DOUBLE PRECISION;
+  END IF;
+END $$;
 
-    CONSTRAINT "EmploymentPeriod_pkey" PRIMARY KEY ("id")
-);
+-- Add missing columns to PaymentLog
+DO $$ BEGIN
+  IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'PaymentLog' AND column_name = 'currency') THEN
+    ALTER TABLE "PaymentLog" ADD COLUMN "currency" TEXT NOT NULL DEFAULT 'USD';
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'PaymentLog' AND column_name = 'conversionRate') THEN
+    ALTER TABLE "PaymentLog" ADD COLUMN "conversionRate" DOUBLE PRECISION;
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'PaymentLog' AND column_name = 'amountUSD') THEN
+    ALTER TABLE "PaymentLog" ADD COLUMN "amountUSD" DOUBLE PRECISION NOT NULL DEFAULT 0;
+  END IF;
+END $$;
 
--- CreateTable
-CREATE TABLE "PaymentLog" (
-    "id" TEXT NOT NULL,
-    "employeeId" TEXT NOT NULL,
-    "employmentPeriodId" TEXT,
-    "amount" DOUBLE PRECISION NOT NULL,
-    "currency" TEXT NOT NULL DEFAULT 'USD',
-    "conversionRate" DOUBLE PRECISION,
-    "amountUSD" DOUBLE PRECISION NOT NULL,
-    "date" TIMESTAMP(3) NOT NULL,
-    "paymentMethod" "PaymentMethod" NOT NULL,
-    "paymentType" "PaymentType" NOT NULL,
-    "description" TEXT,
-    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+UPDATE "PaymentLog" SET "amountUSD" = "amount", "conversionRate" = 1, "currency" = 'USD' WHERE "amountUSD" = 0;
 
-    CONSTRAINT "PaymentLog_pkey" PRIMARY KEY ("id")
-);
+-- RecurringExpense should already exist from previous migration, add columns if missing
+DO $$ BEGIN
+  IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'RecurringExpense' AND column_name = 'currency') THEN
+    ALTER TABLE "RecurringExpense" ADD COLUMN "currency" TEXT NOT NULL DEFAULT 'USD';
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'RecurringExpense' AND column_name = 'conversionRate') THEN
+    ALTER TABLE "RecurringExpense" ADD COLUMN "conversionRate" DOUBLE PRECISION;
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'RecurringExpense' AND column_name = 'amountUSD') THEN
+    ALTER TABLE "RecurringExpense" ADD COLUMN "amountUSD" DOUBLE PRECISION NOT NULL DEFAULT 0;
+  END IF;
+END $$;
 
--- CreateTable
-CREATE TABLE "RecurringExpense" (
-    "id" TEXT NOT NULL,
-    "projectId" TEXT NOT NULL,
-    "name" TEXT NOT NULL,
-    "description" TEXT,
-    "type" TEXT NOT NULL,
-    "amount" DOUBLE PRECISION NOT NULL,
-    "currency" TEXT NOT NULL DEFAULT 'USD',
-    "conversionRate" DOUBLE PRECISION,
-    "amountUSD" DOUBLE PRECISION NOT NULL,
-    "frequency" TEXT NOT NULL DEFAULT 'Monthly',
-    "isActive" BOOLEAN NOT NULL DEFAULT true,
-    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    "updatedAt" TIMESTAMP(3) NOT NULL,
-
-    CONSTRAINT "RecurringExpense_pkey" PRIMARY KEY ("id")
-);
-
--- CreateIndex
-CREATE UNIQUE INDEX "EmploymentPeriod_employeeId_startDate_key" ON "EmploymentPeriod"("employeeId", "startDate");
+UPDATE "RecurringExpense" SET "amountUSD" = "amount", "conversionRate" = 1, "currency" = 'USD' WHERE "amountUSD" = 0;
