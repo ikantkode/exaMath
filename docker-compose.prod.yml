@@ -1,0 +1,49 @@
+services:
+  db:
+    image: postgres:16-alpine
+    restart: always
+    environment:
+      POSTGRES_USER: ${DB_USER:-construction}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-construction_pass}
+      POSTGRES_DB: ${DB_NAME:-construction_db}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER:-construction} -d ${DB_NAME:-construction_db}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile.prod
+    restart: always
+    environment:
+      DATABASE_URL: postgresql://${DB_USER:-construction}:${DB_PASSWORD:-construction_pass}@db:5432/${DB_NAME:-construction_db}
+      JWT_SECRET: ${JWT_SECRET:-change_this_to_a_secure_random_string_in_prod}
+      PORT: 3001
+      NODE_ENV: production
+    depends_on:
+      db:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:3001/api/auth/setup-status || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 40s
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile.prod
+    restart: always
+    depends_on:
+      - backend
+
+volumes:
+  pgdata:
+# rebuild 1782846708
+# rebuild 1782849087
