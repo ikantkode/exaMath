@@ -19,8 +19,8 @@ interface DashboardData {
     totalProjects: number;
     sovs: Record<string, number>;
   };
-  expenseByType: Array<{ expenseType: string; _sum: { amount: number } }>;
-  expenseByCategory: Array<{ categoryId: string; _sum: { amount: number } }>;
+  expenseByType: Array<{ expenseType: string; _sum: { amountUSD: number } }>;
+  expenseByCategory: Array<{ categoryId: string; _sum: { amountUSD: number } }>;
 }
 
 const COLORS = ['#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6'];
@@ -135,7 +135,8 @@ const Dashboard = () => {
                   <XAxis dataKey="expenseType" className="text-xs" />
                   <YAxis className="text-xs" />
                   <Tooltip formatter={(value: number) => formatCurrency(value)} />
-                  <Bar dataKey="_sum.amount" fill="hsl(var(--primary))" radius={[4, 4, 0, 0]} />
+                   <Bar dataKey="_sum.amountUSD" fill="hsl(var(--primary))" radius={[4, 4, 0, 0]} />
+
                 </BarChart>
               </ResponsiveContainer>
             </div>
@@ -153,7 +154,8 @@ const Dashboard = () => {
                 <PieChart>
                   <Pie
                     data={expenseByType}
-                    dataKey="_sum.amount"
+                     dataKey="_sum.amountUSD"
+
                     nameKey="expenseType"
                     cx="50%"
                     cy="50%"

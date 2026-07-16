@@ -29,6 +29,9 @@ interface PaymentLog {
   employee: Employee;
   employmentPeriodId?: string;
   amount: number;
+  currency: string;
+  conversionRate: number | null;
+  amountUSD: number;
   date: string;
   paymentMethod: string;
   paymentType: string;
@@ -36,8 +39,8 @@ interface PaymentLog {
 }
 
 interface Stats {
-  byType: { paymentType: string; _sum: { amount: number } }[];
-  byMethod: { paymentMethod: string; _sum: { amount: number } }[];
+  byType: { paymentType: string; _sum: { amountUSD: number } }[];
+  byMethod: { paymentMethod: string; _sum: { amountUSD: number } }[];
   total: number;
   count: number;
 }
@@ -66,7 +69,8 @@ const OfficePayroll = () => {
   const [filters, setFilters] = useState({ employeeId: '', paymentType: '', paymentMethod: '', startDate: '', endDate: '' });
 
   const [formData, setFormData] = useState({
-    employeeId: '', amount: '', date: new Date().toISOString().split('T')[0],
+    employeeId: '', amount: '', currency: 'USD', conversionRate: '', amountUSD: '',
+    date: new Date().toISOString().split('T')[0],
     paymentMethod: 'WIRE', paymentType: 'SALARY', description: '',
   });
 
@@ -96,13 +100,17 @@ const OfficePayroll = () => {
       await api.post('/office-payroll/', {
         employeeId: formData.employeeId,
         amount: parseFloat(formData.amount),
+        currency: formData.currency,
+        conversionRate: formData.conversionRate ? parseFloat(formData.conversionRate) : null,
+        amountUSD: parseFloat(formData.amountUSD),
         date: formData.date,
         paymentMethod: formData.paymentMethod,
         paymentType: formData.paymentType,
         description: formData.paymentType === 'OTHER' ? formData.description : null,
       });
       setFormData({
-        employeeId: '', amount: '', date: new Date().toISOString().split('T')[0],
+        employeeId: '', amount: '', currency: 'USD', conversionRate: '', amountUSD: '',
+        date: new Date().toISOString().split('T')[0],
         paymentMethod: 'WIRE', paymentType: 'SALARY', description: '',
       });
       setShowModal(false);
@@ -190,7 +198,7 @@ const OfficePayroll = () => {
           <Card key={bt.paymentType}>
             <CardHeader className="pb-2">
               <CardDescription>{typeLabel(bt.paymentType)}</CardDescription>
-              <CardTitle className="text-2xl font-semibold tabular-nums">{formatCurrency(bt._sum.amount || 0)}</CardTitle>
+              <CardTitle className="text-2xl font-semibold tabular-nums">{formatCurrency(bt._sum.amountUSD || 0)}</CardTitle>
             </CardHeader>
             <CardContent>
               <Separator />
@@ -264,7 +272,7 @@ const OfficePayroll = () => {
         <div className="space-y-4">
           {grouped.map(({ employee, entries }) => {
             const isExpanded = expandedEmployees.has(employee.id);
-            const totalPaid = entries.reduce((s, e) => s + e.amount, 0);
+            const totalPaid = entries.reduce((s, e) => s + e.amountUSD, 0);
             return (
               <Card key={employee.id}>
                 <CardHeader className="pb-2">
@@ -309,7 +317,7 @@ const OfficePayroll = () => {
                                 {formatDate(entry.date)}
                               </div>
                             </TableCell>
-                            <TableCell className="font-medium tabular-nums">{formatCurrency(entry.amount)}</TableCell>
+                            <TableCell className="font-medium tabular-nums">{formatCurrency(entry.amountUSD)}</TableCell>
                             <TableCell>{methodBadge(entry.paymentMethod)}</TableCell>
                             <TableCell>{typeBadge(entry.paymentType)}</TableCell>
                             <TableCell className="text-sm max-w-xs truncate">
@@ -355,17 +363,50 @@ const OfficePayroll = () => {
             </div>
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
-                <Label htmlFor="payroll-amount">Amount ($) *</Label>
+                <Label htmlFor="payroll-amount">Amount *</Label>
                 <Input id="payroll-amount" type="number" step="0.01" value={formData.amount}
                   onChange={e => setFormData({ ...formData, amount: e.target.value })} required />
               </div>
+              <div className="space-y-2">
+                <Label htmlFor="payroll-currency">Currency</Label>
+                <Select value={formData.currency} onValueChange={v => setFormData({ ...formData, currency: v ?? 'USD' })}>
+                  <SelectTrigger id="payroll-currency"><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="USD">USD</SelectItem>
+                    <SelectItem value="PKR">PKR</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+            {formData.currency === 'PKR' && (
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label htmlFor="payroll-rate">USD/PKR Rate</Label>
+                  <Input id="payroll-rate" type="number" step="0.01" value={formData.conversionRate}
+                    onChange={e => {
+                      const rate = parseFloat(e.target.value) || 0;
+                      const amount = parseFloat(formData.amount) || 0;
+                      setFormData({ ...formData, conversionRate: e.target.value, amountUSD: (amount / rate).toFixed(2) });
+                    }}
+                    placeholder="e.g. 278.50" />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="payroll-usd">Amount (USD)</Label>
+                  <Input id="payroll-usd" type="number" step="0.01" value={formData.amountUSD}
+                    onChange={e => {
+                      const usd = parseFloat(e.target.value) || 0;
+                      const rate = parseFloat(formData.conversionRate) || 1;
+                      setFormData({ ...formData, amountUSD: e.target.value, amount: (usd * rate).toFixed(2) });
+                    }} required />
+                </div>
+              </div>
+            )}
+            <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
                 <Label htmlFor="payroll-date">Date *</Label>
                 <Input id="payroll-date" type="date" value={formData.date}
                   onChange={e => setFormData({ ...formData, date: e.target.value })} required />
               </div>
-            </div>
-            <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
                 <Label htmlFor="payroll-method">Payment Method *</Label>
                 <Select value={formData.paymentMethod} onValueChange={v => setFormData({ ...formData, paymentMethod: v ?? 'WIRE' })}>
@@ -375,15 +416,15 @@ const OfficePayroll = () => {
                   </SelectContent>
                 </Select>
               </div>
-              <div className="space-y-2">
-                <Label htmlFor="payroll-type">Payment Type *</Label>
-                <Select value={formData.paymentType} onValueChange={v => setFormData({ ...formData, paymentType: v ?? 'SALARY', description: v !== 'OTHER' ? '' : formData.description })}>
-                  <SelectTrigger id="payroll-type"><SelectValue /></SelectTrigger>
-                  <SelectContent>
-                    {PAYMENT_TYPES.map(t => <SelectItem key={t} value={t}>{typeLabel(t)}</SelectItem>)}
-                  </SelectContent>
-                </Select>
-              </div>
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="payroll-type">Payment Type *</Label>
+              <Select value={formData.paymentType} onValueChange={v => setFormData({ ...formData, paymentType: v ?? 'SALARY', description: v !== 'OTHER' ? '' : formData.description })}>
+                <SelectTrigger id="payroll-type"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  {PAYMENT_TYPES.map(t => <SelectItem key={t} value={t}>{typeLabel(t)}</SelectItem>)}
+                </SelectContent>
+              </Select>
             </div>
             {formData.paymentType === 'OTHER' && (
               <div className="space-y-2">

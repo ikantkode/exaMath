@@ -291,12 +291,16 @@ model PaymentLog {
   employee             Employee         @relation(fields: [employeeId], references: [id], onDelete: Cascade)
   employmentPeriodId   String?
   employmentPeriod     EmploymentPeriod? @relation(fields: [employmentPeriodId], references: [id], onDelete: SetNull)
-  amount               Float
-  date                 DateTime
-  paymentMethod        PaymentMethod
-  paymentType          PaymentType
-  description          String?
-  createdAt            DateTime         @default(now())
+   amount               Float
+   currency             String           @default("USD")
+   conversionRate        Float?
+   amountUSD             Float
+   date                 DateTime
+   paymentMethod        PaymentMethod
+   paymentType          PaymentType
+   description          String?
+   createdAt            DateTime         @default(now())
+
 }
 
 // Field worker master record
@@ -361,12 +365,15 @@ model FixedAsset {
 
 model Payout {
   id          String   @id @default(uuid())
-  type        String
-  amount      Float
-  recipient   String
-  description String?
-  date        DateTime @default(now())
-  createdAt   DateTime @default(now())
+  type           String
+  amount         Float
+  currency       String           @default("USD")
+  conversionRate  Float?
+  amountUSD      Float
+  recipient      String
+  description    String?
+  date           DateTime @default(now())
+  createdAt      DateTime @default(now())
 }
 
 model RecurringExpense {

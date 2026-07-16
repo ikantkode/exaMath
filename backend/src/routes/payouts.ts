@@ -18,7 +18,23 @@ router.get('/', authenticate, authorize('OWNER', 'MANAGER'), async (_req: AuthRe
 
 router.post('/', authenticate, authorize('OWNER'), async (req: AuthRequest, res) => {
   try {
-    const payout = await prisma.payout.create({ data: req.body });
+    const { type, amount, currency, conversionRate, amountUSD, recipient, description, date } = req.body;
+    if (!type || amount === undefined || !recipient || !date) {
+      return res.status(400).json({ error: 'Type, amount, recipient, and date are required' });
+    }
+
+    const payout = await prisma.payout.create({
+      data: {
+        type,
+        amount: parseFloat(amount),
+        currency: currency || 'USD',
+        conversionRate: conversionRate ? parseFloat(conversionRate) : null,
+        amountUSD: parseFloat(amountUSD),
+        recipient,
+        description,
+        date: new Date(date),
+      },
+    });
     await logAction(req.user!.id, 'CREATE', 'Payout', payout.id, null, JSON.stringify(req.body));
     res.status(201).json(payout);
   } catch (error) {

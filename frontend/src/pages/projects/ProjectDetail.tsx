@@ -27,12 +27,13 @@ interface ProjectDetail {
   totalExpenses: number;
   totalLabor: number;
   totalContractValue: number;
-  budgetCategories: Array<{
-    id: string;
-    name: string;
-    budget: number;
-    expenses: Array<{ amount: number }>;
-  }>;
+   budgetCategories: Array<{
+     id: string;
+     name: string;
+     budget: number;
+     expenses: Array<{ amountUSD: number }>;
+   }>;
+
   expenses: any[];
   timesheets: any[];
 }
@@ -94,7 +95,8 @@ const ProjectDetail = () => {
   const budgetData = project.budgetCategories.map(cat => ({
     name: cat.name,
     budget: cat.budget,
-    spent: cat.expenses.reduce((sum, e) => sum + e.amount, 0),
+     spent: cat.expenses.reduce((sum, e) => sum + e.amountUSD, 0),
+
   }));
 
   const profit = project.totalContractValue - project.totalExpenses - project.totalLabor;

@@ -11,28 +11,28 @@ router.get('/', authenticate, authorize('OWNER', 'MANAGER'), async (_req: AuthRe
     const totalTimesheets = await prisma.timesheet.aggregate({ _sum: { hours: true } });
     const officePayroll = await prisma.officePayroll.aggregate({ _sum: { netPay: true } });
     const fixedAssets = await prisma.fixedAsset.aggregate({ _sum: { currentValue: true, purchasePrice: true } });
-    const payouts = await prisma.payout.aggregate({ _sum: { amount: true } });
+    const payouts = await prisma.payout.aggregate({ _sum: { amountUSD: true } });
     const sovs = await prisma.scheduleOfValue.groupBy({ by: ['status'], _count: { id: true } });
     const activeProjects = await prisma.project.count({ where: { status: 'ACTIVE' } });
 
     const expenseByType = await prisma.expense.groupBy({
       by: ['expenseType'],
-      _sum: { amount: true },
+      _sum: { amountUSD: true },
     });
 
     const expenseByCategory = await prisma.expense.groupBy({
       by: ['categoryId'],
-      _sum: { amount: true },
+      _sum: { amountUSD: true },
     });
 
     res.json({
       summary: {
-        totalExpenses: totalExpenses._sum.amount || 0,
+        totalExpenses: totalExpenses._sum.amountUSD || 0,
         totalLaborHours: totalTimesheets._sum.hours || 0,
-        totalOfficePayroll: officePayroll._sum.amount || 0,
+        totalOfficePayroll: officePayroll._sum.netPay || 0,
         totalAssetsValue: fixedAssets._sum.currentValue || 0,
         totalAssetsOriginal: fixedAssets._sum.purchasePrice || 0,
-        totalPayouts: payouts._sum.amount || 0,
+        totalPayouts: payouts._sum.amountUSD || 0,
         activeProjects,
         totalProjects: projects.length,
         sovs: sovs.reduce((acc: Record<string, number>, s: any) => ({ ...acc, [s.status]: s._count.id }), {}),
