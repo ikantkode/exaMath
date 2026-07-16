@@ -13,14 +13,21 @@
   - Added the required column `amountUSD` to the `Payout` table without a default value. This is not possible if the table is not empty.
 
 */
--- CreateEnum
-CREATE TYPE "EmployeeStatus" AS ENUM ('ACTIVE', 'TERMINATED');
+-- Create enums if not exists
+DO $$ BEGIN
+  CREATE TYPE "EmployeeStatus" AS ENUM ('ACTIVE', 'TERMINATED');
+EXCEPTION WHEN duplicate_object THEN null;
+END $$;
 
--- CreateEnum
-CREATE TYPE "PaymentMethod" AS ENUM ('WIRE', 'ZELLE', 'CASH', 'CHECK', 'OTHER');
+DO $$ BEGIN
+  CREATE TYPE "PaymentMethod" AS ENUM ('WIRE', 'ZELLE', 'CASH', 'CHECK', 'OTHER');
+EXCEPTION WHEN duplicate_object THEN null;
+END $$;
 
--- CreateEnum
-CREATE TYPE "PaymentType" AS ENUM ('SALARY', 'BONUS', 'OTHER');
+DO $$ BEGIN
+  CREATE TYPE "PaymentType" AS ENUM ('SALARY', 'BONUS', 'OTHER');
+EXCEPTION WHEN duplicate_object THEN null;
+END $$;
 
 -- AlterEnum
 ALTER TYPE "ScheduleFormat" ADD VALUE 'P6PRO';
