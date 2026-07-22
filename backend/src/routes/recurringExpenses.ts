@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import prisma from '../../prisma/client';
-import { authenticate, authorize, AuthRequest } from '../middleware/auth';
+import { authenticate, authorize, AuthRequest, tenantFilter } from '../middleware/auth';
 import { logAction } from '../utils/audit';
 
 const router = Router();
@@ -8,7 +8,7 @@ const router = Router();
 router.get('/', authenticate, async (req: AuthRequest, res) => {
   try {
     const { projectId } = req.query;
-    const where: any = {};
+    const where: any = { ...tenantFilter(req.tenantId) };
     if (projectId) where.projectId = projectId as string;
 
     const expenses = await prisma.recurringExpense.findMany({
@@ -42,6 +42,7 @@ router.post('/', authenticate, authorize('OWNER', 'MANAGER'), async (req: AuthRe
         conversionRate: cleanCurrency === 'PKR' ? rate : null,
         amountUSD: finalAmountUSD,
         frequency: frequency || 'Monthly',
+        tenantId: req.tenantId!,
       },
     });
     await logAction(req.user!.id, 'CREATE', 'RecurringExpense', expense.id, null, JSON.stringify(req.body));
@@ -53,7 +54,8 @@ router.post('/', authenticate, authorize('OWNER', 'MANAGER'), async (req: AuthRe
 
 router.put('/:id', authenticate, authorize('OWNER', 'MANAGER'), async (req: AuthRequest, res) => {
   try {
-    const old = await prisma.recurringExpense.findUnique({ where: { id: req.params.id } });
+    const old = await prisma.recurringExpense.findFirst({ where: { id: req.params.id, ...tenantFilter(req.tenantId) } });
+    if (!old) return res.status(404).json({ error: 'Recurring expense not found' });
     const { name, description, type, amount, currency, conversionRate, frequency, isActive } = req.body;
     const existing = old as any;
     const cleanCurrency = currency || existing?.currency || 'USD';
@@ -83,6 +85,8 @@ router.put('/:id', authenticate, authorize('OWNER', 'MANAGER'), async (req: Auth
 
 router.delete('/:id', authenticate, authorize('OWNER'), async (req: AuthRequest, res) => {
   try {
+    const expense = await prisma.recurringExpense.findFirst({ where: { id: req.params.id, ...tenantFilter(req.tenantId) } });
+    if (!expense) return res.status(404).json({ error: 'Recurring expense not found' });
     await prisma.recurringExpense.delete({ where: { id: req.params.id } });
     await logAction(req.user!.id, 'DELETE', 'RecurringExpense', req.params.id, null, null);
     res.json({ message: 'Recurring expense deleted' });

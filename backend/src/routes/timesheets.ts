@@ -2,13 +2,17 @@ import { Router } from 'express';
 import prisma from '../../prisma/client';
 import { authenticate, authorize, AuthRequest } from '../middleware/auth';
 import { logAction } from '../utils/audit';
+import { getTenantId } from '../utils/tenant';
 
 const router = Router();
 
 router.get('/', authenticate, async (req: AuthRequest, res) => {
   try {
+    const tenantId = getTenantId(req);
+    const tenantFilter = tenantId ? { tenantId } : {};
+    
     const { projectId } = req.query;
-    const where: any = {};
+    const where: any = { ...tenantFilter };
     if (projectId) where.projectId = projectId as string;
 
     const timesheets = await prisma.timesheet.findMany({
@@ -24,6 +28,7 @@ router.get('/', authenticate, async (req: AuthRequest, res) => {
 
 router.post('/', authenticate, authorize('OWNER', 'MANAGER'), async (req: AuthRequest, res) => {
   try {
+    const tenantId = getTenantId(req);
     const { hours, rate, date, projectId } = req.body;
     const timesheet = await prisma.timesheet.create({
       data: {
@@ -32,6 +37,7 @@ router.post('/', authenticate, authorize('OWNER', 'MANAGER'), async (req: AuthRe
         date: date ? new Date(date) : new Date(),
         projectId,
         userId: req.user!.id,
+        tenantId: tenantId || req.body.tenantId,
       },
     });
     await logAction(req.user!.id, 'CREATE', 'Timesheet', timesheet.id, null, JSON.stringify(req.body));
@@ -43,7 +49,12 @@ router.post('/', authenticate, authorize('OWNER', 'MANAGER'), async (req: AuthRe
 
 router.put('/:id', authenticate, authorize('OWNER', 'MANAGER'), async (req: AuthRequest, res) => {
   try {
-    const old = await prisma.timesheet.findUnique({ where: { id: req.params.id } });
+    const tenantId = getTenantId(req);
+    const tenantFilter = tenantId ? { tenantId } : {};
+    
+    const old = await prisma.timesheet.findUnique({ where: { id: req.params.id, ...tenantFilter } });
+    if (!old) return res.status(404).json({ error: 'Timesheet not found' });
+    
     const timesheet = await prisma.timesheet.update({
       where: { id: req.params.id },
       data: req.body,
@@ -57,6 +68,12 @@ router.put('/:id', authenticate, authorize('OWNER', 'MANAGER'), async (req: Auth
 
 router.delete('/:id', authenticate, authorize('OWNER'), async (req: AuthRequest, res) => {
   try {
+    const tenantId = getTenantId(req);
+    const tenantFilter = tenantId ? { tenantId } : {};
+    
+    const timesheet = await prisma.timesheet.findUnique({ where: { id: req.params.id, ...tenantFilter } });
+    if (!timesheet) return res.status(404).json({ error: 'Timesheet not found' });
+    
     await prisma.timesheet.delete({ where: { id: req.params.id } });
     await logAction(req.user!.id, 'DELETE', 'Timesheet', req.params.id, null, null);
     res.json({ message: 'Timesheet deleted' });

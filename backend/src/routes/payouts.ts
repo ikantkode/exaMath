@@ -2,12 +2,17 @@ import { Router } from 'express';
 import prisma from '../../prisma/client';
 import { authenticate, authorize, AuthRequest } from '../middleware/auth';
 import { logAction } from '../utils/audit';
+import { getTenantId } from '../utils/tenant';
 
 const router = Router();
 
-router.get('/', authenticate, authorize('OWNER', 'MANAGER'), async (_req: AuthRequest, res) => {
+router.get('/', authenticate, authorize('OWNER', 'MANAGER'), async (req: AuthRequest, res) => {
   try {
+    const tenantId = getTenantId(req);
+    const tenantFilter = tenantId ? { tenantId } : {};
+    
     const payouts = await prisma.payout.findMany({
+      where: tenantFilter,
       orderBy: { date: 'desc' },
     });
     res.json(payouts);
@@ -18,6 +23,7 @@ router.get('/', authenticate, authorize('OWNER', 'MANAGER'), async (_req: AuthRe
 
 router.post('/', authenticate, authorize('OWNER'), async (req: AuthRequest, res) => {
   try {
+    const tenantId = getTenantId(req);
     const { type, amount, currency, conversionRate, amountUSD, recipient, description, date } = req.body;
     if (!type || amount === undefined || !recipient || !date) {
       return res.status(400).json({ error: 'Type, amount, recipient, and date are required' });
@@ -33,6 +39,7 @@ router.post('/', authenticate, authorize('OWNER'), async (req: AuthRequest, res)
         recipient,
         description,
         date: new Date(date),
+        tenantId: tenantId || req.body.tenantId,
       },
     });
     await logAction(req.user!.id, 'CREATE', 'Payout', payout.id, null, JSON.stringify(req.body));
@@ -44,7 +51,12 @@ router.post('/', authenticate, authorize('OWNER'), async (req: AuthRequest, res)
 
 router.put('/:id', authenticate, authorize('OWNER'), async (req: AuthRequest, res) => {
   try {
-    const old = await prisma.payout.findUnique({ where: { id: req.params.id } });
+    const tenantId = getTenantId(req);
+    const tenantFilter = tenantId ? { tenantId } : {};
+    
+    const old = await prisma.payout.findUnique({ where: { id: req.params.id, ...tenantFilter } });
+    if (!old) return res.status(404).json({ error: 'Payout not found' });
+    
     const payout = await prisma.payout.update({
       where: { id: req.params.id },
       data: req.body,
@@ -58,6 +70,12 @@ router.put('/:id', authenticate, authorize('OWNER'), async (req: AuthRequest, re
 
 router.delete('/:id', authenticate, authorize('OWNER'), async (req: AuthRequest, res) => {
   try {
+    const tenantId = getTenantId(req);
+    const tenantFilter = tenantId ? { tenantId } : {};
+    
+    const payout = await prisma.payout.findUnique({ where: { id: req.params.id, ...tenantFilter } });
+    if (!payout) return res.status(404).json({ error: 'Payout not found' });
+    
     await prisma.payout.delete({ where: { id: req.params.id } });
     await logAction(req.user!.id, 'DELETE', 'Payout', req.params.id, null, null);
     res.json({ message: 'Payout deleted' });

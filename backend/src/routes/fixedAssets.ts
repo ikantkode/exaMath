@@ -2,12 +2,17 @@ import { Router } from 'express';
 import prisma from '../../prisma/client';
 import { authenticate, authorize, AuthRequest } from '../middleware/auth';
 import { logAction } from '../utils/audit';
+import { getTenantId } from '../utils/tenant';
 
 const router = Router();
 
-router.get('/', authenticate, authorize('OWNER', 'MANAGER'), async (_req: AuthRequest, res) => {
+router.get('/', authenticate, authorize('OWNER', 'MANAGER'), async (req: AuthRequest, res) => {
   try {
+    const tenantId = getTenantId(req);
+    const tenantFilter = tenantId ? { tenantId } : {};
+    
     const assets = await prisma.fixedAsset.findMany({
+      where: tenantFilter,
       orderBy: { purchaseDate: 'desc' },
     });
     res.json(assets);
@@ -18,10 +23,11 @@ router.get('/', authenticate, authorize('OWNER', 'MANAGER'), async (_req: AuthRe
 
 router.post('/', authenticate, authorize('OWNER'), async (req: AuthRequest, res) => {
   try {
+    const tenantId = getTenantId(req);
     const { name, category, purchasePrice, purchaseDate, usefulLife } = req.body;
     const currentValue = purchasePrice;
     const asset = await prisma.fixedAsset.create({
-      data: { name, category, purchasePrice, purchaseDate: purchaseDate ? new Date(purchaseDate) : new Date(), usefulLife, currentValue },
+      data: { name, category, purchasePrice, purchaseDate: purchaseDate ? new Date(purchaseDate) : new Date(), usefulLife, currentValue, tenantId: tenantId || req.body.tenantId },
     });
     await logAction(req.user!.id, 'CREATE', 'FixedAsset', asset.id, null, JSON.stringify(req.body));
     res.status(201).json(asset);
@@ -32,7 +38,10 @@ router.post('/', authenticate, authorize('OWNER'), async (req: AuthRequest, res)
 
 router.post('/recalculate', authenticate, authorize('OWNER'), async (req: AuthRequest, res) => {
   try {
-    const assets = await prisma.fixedAsset.findMany();
+    const tenantId = getTenantId(req);
+    const tenantFilter = tenantId ? { tenantId } : {};
+    
+    const assets = await prisma.fixedAsset.findMany({ where: tenantFilter });
     const now = new Date();
     const updates = assets.map(async (asset: any) => {
       const purchaseDate = new Date(asset.purchaseDate);
@@ -47,7 +56,7 @@ router.post('/recalculate', authenticate, authorize('OWNER'), async (req: AuthRe
     });
     await Promise.all(updates);
     await logAction(req.user!.id, 'RECALCULATE', 'FixedAsset', null, null, 'Depreciation recalculated');
-    const updated = await prisma.fixedAsset.findMany();
+    const updated = await prisma.fixedAsset.findMany({ where: tenantFilter });
     res.json(updated);
   } catch (error) {
     res.status(500).json({ error: 'Failed to recalculate depreciation' });
@@ -56,7 +65,12 @@ router.post('/recalculate', authenticate, authorize('OWNER'), async (req: AuthRe
 
 router.put('/:id', authenticate, authorize('OWNER'), async (req: AuthRequest, res) => {
   try {
-    const old = await prisma.fixedAsset.findUnique({ where: { id: req.params.id } });
+    const tenantId = getTenantId(req);
+    const tenantFilter = tenantId ? { tenantId } : {};
+    
+    const old = await prisma.fixedAsset.findUnique({ where: { id: req.params.id, ...tenantFilter } });
+    if (!old) return res.status(404).json({ error: 'Fixed asset not found' });
+    
     const asset = await prisma.fixedAsset.update({
       where: { id: req.params.id },
       data: req.body,
@@ -70,6 +84,12 @@ router.put('/:id', authenticate, authorize('OWNER'), async (req: AuthRequest, re
 
 router.delete('/:id', authenticate, authorize('OWNER'), async (req: AuthRequest, res) => {
   try {
+    const tenantId = getTenantId(req);
+    const tenantFilter = tenantId ? { tenantId } : {};
+    
+    const asset = await prisma.fixedAsset.findUnique({ where: { id: req.params.id, ...tenantFilter } });
+    if (!asset) return res.status(404).json({ error: 'Fixed asset not found' });
+    
     await prisma.fixedAsset.delete({ where: { id: req.params.id } });
     await logAction(req.user!.id, 'DELETE', 'FixedAsset', req.params.id, null, null);
     res.json({ message: 'Fixed asset deleted' });

@@ -3,7 +3,7 @@ import { XMLParser } from 'fast-xml-parser';
 import { create } from 'xmlbuilder2';
 import multer from 'multer';
 import prisma from '../../prisma/client';
-import { authenticate, authorize, AuthRequest } from '../middleware/auth';
+import { authenticate, authorize, AuthRequest, tenantFilter } from '../middleware/auth';
 import { logAction } from '../utils/audit';
 
 const router = Router();
@@ -229,14 +229,15 @@ function buildPMXML(tasks: any[], originalXml: string): string {
 
 // ─── Versioning helpers ──────────────────────────────────────────────────────
 
-async function snapshotVersion(sessionId: string, userId: string): Promise<number> {
+async function snapshotVersion(sessionId: string, userId: string, tenantId: string | undefined): Promise<number> {
+  if (!tenantId) throw new Error('Tenant required');
   const session = await prisma.scheduleSession.findUnique({
-    where: { id: sessionId },
+    where: { id: sessionId, tenantId },
     include: { parsedTasks: true },
   });
   if (!session) throw new Error('Schedule not found');
 
-  const existingVersions = await prisma.scheduleVersion.count({ where: { sessionId } });
+  const existingVersions = await prisma.scheduleVersion.count({ where: { sessionId, session: { tenantId } } });
   const versionNumber = existingVersions + 1;
 
   const snapshot = session.parsedTasks.map((t: any) => ({
@@ -259,15 +260,17 @@ async function snapshotVersion(sessionId: string, userId: string): Promise<numbe
       versionNumber,
       taskSnapshot: JSON.stringify(snapshot),
       createdById: userId,
+      tenantId,
     },
   });
 
   return versionNumber;
 }
 
-async function restoreVersion(sessionId: string, versionNumber: number, userId: string) {
+async function restoreVersion(sessionId: string, versionNumber: number, userId: string, tenantId: string | undefined) {
+  if (!tenantId) throw new Error('Tenant required');
   const version = await prisma.scheduleVersion.findFirst({
-    where: { sessionId, versionNumber },
+    where: { sessionId, versionNumber, session: { tenantId } },
     include: { createdBy: { select: { name: true } } },
   });
   if (!version) throw new Error('Version not found');
@@ -276,8 +279,8 @@ async function restoreVersion(sessionId: string, versionNumber: number, userId: 
 
   await prisma.$transaction(
     tasks.map((t: any) =>
-      prisma.scheduleTask.update({
-        where: { id: t.id },
+      prisma.scheduleTask.updateMany({
+        where: { id: t.id, tenantId },
         data: {
           actualStart: t.actualStart ? new Date(t.actualStart) : null,
           actualFinish: t.actualFinish ? new Date(t.actualFinish) : null,
@@ -292,22 +295,23 @@ async function restoreVersion(sessionId: string, versionNumber: number, userId: 
   await logAction(userId, 'RESTORE', 'ScheduleVersion', version.id);
 
   const session = await prisma.scheduleSession.findUnique({
-    where: { id: sessionId },
+    where: { id: sessionId, tenantId },
     include: { parsedTasks: { orderBy: { activityId: 'asc' } } },
   });
 
   return session;
 }
 
-function checkAutoVersion(sessionId: string, userId: string) {
+function checkAutoVersion(sessionId: string, userId: string, tenantId: string | undefined) {
+  if (!tenantId) return;
   prisma.scheduleVersion.findFirst({
-    where: { sessionId },
+    where: { sessionId, session: { tenantId } },
     orderBy: { versionNumber: 'desc' },
   }).then((existingVersion: any) => {
     const lastVersionTime = existingVersion?.createdAt;
     const fiveMinutesAgo = new Date(Date.now() - 5 * 60 * 1000);
     if (!lastVersionTime || lastVersionTime < fiveMinutesAgo) {
-      snapshotVersion(sessionId, userId).catch(() => {});
+      snapshotVersion(sessionId, userId, tenantId).catch(() => {});
     }
   });
 }
@@ -352,6 +356,7 @@ router.post('/upload', upload.single('file'), authenticate, authorize('OWNER', '
         format,
         projectId,
         originalXml: xml,
+        tenantId: req.tenantId!,
         parsedTasks: {
           create: tasks.map((t) => ({
             activityId: t.activityId,
@@ -364,6 +369,7 @@ router.post('/upload', upload.single('file'), authenticate, authorize('OWNER', '
             physicalPercentComplete: t.physicalPercentComplete,
             status: t.status as any,
             isCritical: t.isCritical,
+            tenantId: req.tenantId!,
           })),
         },
       },
@@ -379,9 +385,10 @@ router.post('/upload', upload.single('file'), authenticate, authorize('OWNER', '
 });
 
 // List sessions
-router.get('/', authenticate, async (_req: AuthRequest, res) => {
+router.get('/', authenticate, async (req: AuthRequest, res) => {
   try {
     const sessions = await prisma.scheduleSession.findMany({
+      where: tenantFilter(req.tenantId),
       include: { parsedTasks: { orderBy: { activityId: 'asc' } } },
       orderBy: { createdAt: 'desc' },
     });
@@ -396,7 +403,7 @@ router.get('/', authenticate, async (_req: AuthRequest, res) => {
 router.get('/:id', authenticate, async (req: AuthRequest, res) => {
   try {
     const session = await prisma.scheduleSession.findUnique({
-      where: { id: req.params.id },
+      where: { id: req.params.id, tenantId: req.tenantId },
       include: {
         parsedTasks: true,
         chatMessages: { include: { user: { select: { name: true } } }, orderBy: { createdAt: 'asc' } },
@@ -414,7 +421,7 @@ router.get('/:id', authenticate, async (req: AuthRequest, res) => {
 router.get('/:id/versions', authenticate, async (req: AuthRequest, res) => {
   try {
     const versions = await prisma.scheduleVersion.findMany({
-      where: { sessionId: req.params.id },
+      where: { sessionId: req.params.id, session: { tenantId: req.tenantId } },
       include: { createdBy: { select: { name: true } } },
       orderBy: { versionNumber: 'asc' },
     });
@@ -427,7 +434,7 @@ router.get('/:id/versions', authenticate, async (req: AuthRequest, res) => {
 // Create a manual version snapshot
 router.post('/:id/versions', authenticate, async (req: AuthRequest, res) => {
   try {
-    const versionNumber = await snapshotVersion(req.params.id, req.user!.id);
+    const versionNumber = await snapshotVersion(req.params.id, req.user!.id, req.tenantId);
     await logAction(req.user!.id, 'CREATE_VERSION', 'ScheduleVersion', req.params.id);
     res.status(201).json({
       message: `Version ${versionNumber} created`,
@@ -443,7 +450,7 @@ router.post('/:id/versions', authenticate, async (req: AuthRequest, res) => {
 router.post('/:id/versions/:versionNumber/restore', authenticate, async (req: AuthRequest, res) => {
   try {
     const versionNumber = parseInt(req.params.versionNumber, 10);
-    const session = await restoreVersion(req.params.id, versionNumber, req.user!.id);
+    const session = await restoreVersion(req.params.id, versionNumber, req.user!.id, req.tenantId);
     if (!session) return res.status(404).json({ error: 'Version not found' });
     res.json({ ...session, parsedTasks: session.parsedTasks || [] });
   } catch (e: any) {
@@ -470,15 +477,20 @@ router.put('/:id/tasks/:taskId', authenticate, async (req: AuthRequest, res) => 
       updates.status = statusFromPercent(physicalPercentComplete);
     }
 
-    checkAutoVersion(req.params.id, req.user!.id);
+    const task = await prisma.scheduleTask.findFirst({
+      where: { id: req.params.taskId, session: { tenantId: req.tenantId } },
+    });
+    if (!task) return res.status(404).json({ error: 'Task not found' });
 
-    const task = await prisma.scheduleTask.update({
+    checkAutoVersion(req.params.id, req.user!.id, req.tenantId);
+
+    const updatedTask = await prisma.scheduleTask.update({
       where: { id: req.params.taskId },
       data: updates,
     });
 
-    await logAction(req.user!.id, 'UPDATE', 'ScheduleTask', task.id);
-    res.json(task);
+    await logAction(req.user!.id, 'UPDATE', 'ScheduleTask', updatedTask.id);
+    res.json(updatedTask);
   } catch (e: any) {
     if (e.code === 'P2025') return res.status(404).json({ error: 'Task not found' });
     res.status(500).json({ error: e.message || 'Failed to update task' });
@@ -491,7 +503,12 @@ router.put('/:id/tasks/batch', authenticate, async (req: AuthRequest, res) => {
     const { updates } = req.body;
     if (!Array.isArray(updates)) return res.status(400).json({ error: 'updates array required' });
 
-    checkAutoVersion(req.params.id, req.user!.id);
+    const session = await prisma.scheduleSession.findUnique({
+      where: { id: req.params.id, tenantId: req.tenantId },
+    });
+    if (!session) return res.status(404).json({ error: 'Schedule not found' });
+
+    checkAutoVersion(req.params.id, req.user!.id, req.tenantId);
 
     const results = await Promise.all(
       updates.map(async (u: any) => {
@@ -516,7 +533,7 @@ router.put('/:id/tasks/batch', authenticate, async (req: AuthRequest, res) => {
 router.post('/:id/export', authenticate, async (req: AuthRequest, res) => {
   try {
     const session = await prisma.scheduleSession.findUnique({
-      where: { id: req.params.id },
+      where: { id: req.params.id, tenantId: req.tenantId },
       include: { parsedTasks: true },
     });
     if (!session) return res.status(404).json({ error: 'Schedule not found' });
@@ -552,6 +569,7 @@ router.post('/:id/chat', authenticate, async (req: AuthRequest, res) => {
         userId: req.user!.id,
         message,
         taskIds: taskIds ? JSON.stringify(taskIds) : null,
+        tenantId: req.tenantId!,
       },
       include: { user: { select: { name: true } } },
     });
@@ -566,7 +584,7 @@ router.post('/:id/chat', authenticate, async (req: AuthRequest, res) => {
 router.get('/:id/chat', authenticate, async (req: AuthRequest, res) => {
   try {
     const messages = await prisma.scheduleChat.findMany({
-      where: { sessionId: req.params.id },
+      where: { sessionId: req.params.id, tenantId: req.tenantId },
       include: { user: { select: { name: true } } },
       orderBy: { createdAt: 'asc' },
     });
@@ -582,13 +600,18 @@ router.patch('/:id', authenticate, authorize('OWNER', 'MANAGER'), async (req: Au
     const { name } = req.body;
     if (!name || !name.trim()) return res.status(400).json({ error: 'Name is required' });
 
-    const session = await prisma.scheduleSession.update({
+    const session = await prisma.scheduleSession.findUnique({
+      where: { id: req.params.id, tenantId: req.tenantId },
+    });
+    if (!session) return res.status(404).json({ error: 'Schedule not found' });
+
+    const updated = await prisma.scheduleSession.update({
       where: { id: req.params.id },
       data: { name: name.trim() },
     });
 
-    await logAction(req.user!.id, 'UPDATE', 'ScheduleSession', session.id);
-    res.json(session);
+    await logAction(req.user!.id, 'UPDATE', 'ScheduleSession', updated.id);
+    res.json(updated);
   } catch (e: any) {
     if (e.code === 'P2025') return res.status(404).json({ error: 'Schedule not found' });
     res.status(500).json({ error: e.message || 'Failed to rename schedule' });
@@ -604,7 +627,7 @@ router.post('/:id/import', upload.single('file'), authenticate, authorize('OWNER
     }
 
     const session = await prisma.scheduleSession.findUnique({
-      where: { id: req.params.id },
+      where: { id: req.params.id, tenantId: req.tenantId },
       include: { parsedTasks: true },
     });
     if (!session) return res.status(404).json({ error: 'Schedule not found' });
@@ -634,11 +657,11 @@ router.post('/:id/import', upload.single('file'), authenticate, authorize('OWNER
     }
 
     // Snapshot current state before replacing
-    const currentVersion = await snapshotVersion(req.params.id, req.user!.id);
+    const currentVersion = await snapshotVersion(req.params.id, req.user!.id, req.tenantId);
 
     // Delete old tasks and create new ones
     await prisma.$transaction([
-      prisma.scheduleTask.deleteMany({ where: { sessionId: req.params.id } }),
+      prisma.scheduleTask.deleteMany({ where: { sessionId: req.params.id, tenantId: req.tenantId } }),
       prisma.scheduleSession.update({
         where: { id: req.params.id },
         data: {
@@ -656,6 +679,7 @@ router.post('/:id/import', upload.single('file'), authenticate, authorize('OWNER
               physicalPercentComplete: t.physicalPercentComplete,
               status: t.status as any,
               isCritical: t.isCritical,
+              tenantId: req.tenantId!,
             })),
           },
         },
@@ -678,7 +702,7 @@ router.post('/:id/import', upload.single('file'), authenticate, authorize('OWNER
 // Delete schedule
 router.delete('/:id', authenticate, authorize('OWNER'), async (req: AuthRequest, res) => {
   try {
-    const session = await prisma.scheduleSession.delete({ where: { id: req.params.id } });
+    const session = await prisma.scheduleSession.delete({ where: { id: req.params.id, tenantId: req.tenantId } });
     await logAction(req.user!.id, 'DELETE', 'ScheduleSession', session.id);
     res.json({ message: 'Schedule deleted' });
   } catch (e: any) {

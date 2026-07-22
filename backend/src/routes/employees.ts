@@ -2,12 +2,17 @@ import { Router } from 'express';
 import prisma from '../../prisma/client';
 import { authenticate, authorize, AuthRequest } from '../middleware/auth';
 import { logAction } from '../utils/audit';
+import { getTenantId } from '../utils/tenant';
 
 const router = Router();
 
-router.get('/', authenticate, async (_req: AuthRequest, res) => {
+router.get('/', authenticate, async (req: AuthRequest, res) => {
   try {
+    const tenantId = getTenantId(req);
+    const tenantFilter = tenantId ? { tenantId } : {};
+    
     const employees = await prisma.employee.findMany({
+      where: tenantFilter,
       orderBy: { createdAt: 'desc' },
       include: {
         employmentPeriods: { where: {}, orderBy: { startDate: 'desc' } },
@@ -20,6 +25,7 @@ router.get('/', authenticate, async (_req: AuthRequest, res) => {
 
 router.post('/', authenticate, authorize('OWNER', 'MANAGER'), async (req: AuthRequest, res) => {
   try {
+    const tenantId = getTenantId(req);
     const { name, email, phone, role, address, compensationType, isUnion, dependents, isPerDiem, startDate, endDate, salary, hourlyRate, notes } = req.body;
     if (!name || !email || !phone || !role) return res.status(400).json({ error: 'Name, email, phone, and role are required' });
     if (!isPerDiem && salary === undefined) return res.status(400).json({ error: 'Salary or hourly rate is required for non per-diem employees' });
@@ -34,6 +40,7 @@ router.post('/', authenticate, authorize('OWNER', 'MANAGER'), async (req: AuthRe
         isPerDiem: !!isPerDiem,
         status: 'ACTIVE',
         notes: notes || null,
+        tenantId: tenantId || req.body.tenantId,
         employmentPeriods: {
           create: {
             startDate: new Date(startDate),
@@ -54,9 +61,12 @@ router.post('/', authenticate, authorize('OWNER', 'MANAGER'), async (req: AuthRe
 
 router.put('/:id', authenticate, authorize('OWNER', 'MANAGER'), async (req: AuthRequest, res) => {
   try {
+    const tenantId = getTenantId(req);
+    const tenantFilter = tenantId ? { tenantId } : {};
+    
     const { id } = req.params;
     const employee = await prisma.employee.findUnique({
-      where: { id },
+      where: { id, ...tenantFilter },
       include: { employmentPeriods: { where: { endDate: null }, take: 1 } },
     });
     if (!employee) return res.status(404).json({ error: 'Employee not found' });
@@ -99,11 +109,14 @@ router.put('/:id', authenticate, authorize('OWNER', 'MANAGER'), async (req: Auth
 // Add a new employment period (re-hire)
 router.post('/:id/employment-periods', authenticate, authorize('OWNER', 'MANAGER'), async (req: AuthRequest, res) => {
   try {
+    const tenantId = getTenantId(req);
+    const tenantFilter = tenantId ? { tenantId } : {};
+    
     const { id } = req.params;
     const { startDate, endDate, salary, hourlyRate } = req.body;
     if (!startDate) return res.status(400).json({ error: 'Start date is required' });
 
-    const employee = await prisma.employee.findUnique({ where: { id } });
+    const employee = await prisma.employee.findUnique({ where: { id, ...tenantFilter } });
     if (!employee) return res.status(404).json({ error: 'Employee not found' });
 
     if (!employee.isPerDiem && (!salary && !hourlyRate)) {
@@ -117,6 +130,7 @@ router.post('/:id/employment-periods', authenticate, authorize('OWNER', 'MANAGER
         endDate: endDate ? new Date(endDate) : null,
         salary: salary ? parseFloat(salary) : null,
         hourlyRate: hourlyRate ? parseFloat(hourlyRate) : null,
+        tenantId: tenantId || req.body.tenantId,
       },
     });
 
@@ -132,10 +146,13 @@ router.post('/:id/employment-periods', authenticate, authorize('OWNER', 'MANAGER
 // Terminate an employment period
 router.patch('/:id/employment-periods/:periodId/terminate', authenticate, authorize('OWNER', 'MANAGER'), async (req: AuthRequest, res) => {
   try {
+    const tenantId = getTenantId(req);
+    const tenantFilter = tenantId ? { tenantId } : {};
+    
     const { id, periodId } = req.params;
     const { endDate } = req.body;
 
-    const employee = await prisma.employee.findUnique({ where: { id } });
+    const employee = await prisma.employee.findUnique({ where: { id, ...tenantFilter } });
     if (!employee) return res.status(404).json({ error: 'Employee not found' });
 
     const endDateVal = endDate ? new Date(endDate) : new Date();
@@ -157,8 +174,11 @@ router.patch('/:id/employment-periods/:periodId/terminate', authenticate, author
 // Reactivate employee
 router.patch('/:id/reactivate', authenticate, authorize('OWNER', 'MANAGER'), async (req: AuthRequest, res) => {
   try {
+    const tenantId = getTenantId(req);
+    const tenantFilter = tenantId ? { tenantId } : {};
+    
     const { id } = req.params;
-    const employee = await prisma.employee.findUnique({ where: { id } });
+    const employee = await prisma.employee.findUnique({ where: { id, ...tenantFilter } });
     if (!employee) return res.status(404).json({ error: 'Employee not found' });
 
     const updated = await prisma.employee.update({
@@ -173,7 +193,13 @@ router.patch('/:id/reactivate', authenticate, authorize('OWNER', 'MANAGER'), asy
 
 router.delete('/:id', authenticate, authorize('OWNER'), async (req: AuthRequest, res) => {
   try {
+    const tenantId = getTenantId(req);
+    const tenantFilter = tenantId ? { tenantId } : {};
+    
     const { id } = req.params;
+    const employee = await prisma.employee.findUnique({ where: { id, ...tenantFilter } });
+    if (!employee) return res.status(404).json({ error: 'Employee not found' });
+    
     await prisma.employee.delete({ where: { id } });
     await logAction(req.user!.id, 'DELETE', 'Employee', id);
     res.json({ message: 'Employee deleted' });

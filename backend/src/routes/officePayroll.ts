@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import prisma from '../../prisma/client';
-import { authenticate, authorize, AuthRequest } from '../middleware/auth';
+import { authenticate, authorize, AuthRequest, tenantFilter } from '../middleware/auth';
 import { logAction } from '../utils/audit';
 
 const router = Router();
@@ -8,7 +8,7 @@ const router = Router();
 router.get('/', authenticate, async (req: AuthRequest, res) => {
   try {
     const { employeeId, paymentType, paymentMethod, startDate, endDate } = req.query;
-    const where: any = {};
+    const where: any = { ...tenantFilter(req.tenantId) };
     if (employeeId) where.employeeId = employeeId as string;
     if (paymentType) where.paymentType = paymentType as string;
     if (paymentMethod) where.paymentMethod = paymentMethod as string;
@@ -34,7 +34,7 @@ router.get('/', authenticate, async (req: AuthRequest, res) => {
 router.get('/stats', authenticate, async (req: AuthRequest, res) => {
   try {
     const { employeeId, startDate, endDate } = req.query;
-    const where: any = {};
+    const where: any = { ...tenantFilter(req.tenantId) };
     if (employeeId) where.employeeId = employeeId as string;
     if (startDate || endDate) {
       where.date = {};
@@ -70,9 +70,10 @@ router.get('/stats', authenticate, async (req: AuthRequest, res) => {
  });
  
  // Employee summary with payment totals
- router.get('/employees-summary', authenticate, async (_req: AuthRequest, res) => {
+ router.get('/employees-summary', authenticate, async (req: AuthRequest, res) => {
    try {
      const employees = await prisma.employee.findMany({
+       where: tenantFilter(req.tenantId),
        include: {
          employmentPeriods: {
            include: {
@@ -118,6 +119,7 @@ router.get('/stats', authenticate, async (req: AuthRequest, res) => {
          paymentMethod,
          paymentType,
          description: (paymentType === 'OTHER' && description) ? description : null,
+         tenantId: req.tenantId!,
        },
        include: {
          employee: true,
@@ -132,6 +134,8 @@ router.get('/stats', authenticate, async (req: AuthRequest, res) => {
  router.delete('/:id', authenticate, authorize('OWNER'), async (req: AuthRequest, res) => {
    try {
      const { id } = req.params;
+     const log = await prisma.paymentLog.findFirst({ where: { id, ...tenantFilter(req.tenantId) } });
+     if (!log) return res.status(404).json({ error: 'Payment log not found' });
      await prisma.paymentLog.delete({ where: { id } });
      await logAction(req.user!.id, 'DELETE', 'PaymentLog', id);
      res.json({ message: 'Payment log deleted' });

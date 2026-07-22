@@ -63,6 +63,49 @@ enum PaymentType {
   OTHER
 }
 
+model Tenant {
+  id          String   @id @default(uuid())
+  name        String
+  slug        String   @unique
+  schemaName  String   @unique
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  tenantUsers TenantUser[]
+}
+
+enum TenantRole {
+  OWNER
+  MANAGER
+  CREW
+}
+
+model TenantUser {
+  id         String        @id @default(uuid())
+  userId     String
+  user       User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  tenantId   String
+  tenant     Tenant        @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  role       TenantRole    @default(CREW)
+  createdAt  DateTime      @default(now())
+
+  @@unique([userId, tenantId])
+}
+
+enum ScheduleFormat {
+  MSPDI
+  PMXML
+  P6PRO
+}
+
+enum TaskStatus {
+  NOT_STARTED
+  IN_PROGRESS
+  COMPLETED
+  WAITING
+  ON_HOLD
+}
+
 model User {
   id            String    @id @default(uuid())
   name          String
@@ -73,14 +116,16 @@ model User {
   createdAt     DateTime  @default(now())
   updatedAt     DateTime  @updatedAt
   timesheets    Timesheet[]
-  auditLogs        AuditLog[]
-  expenses         Expense[]
-  scheduleChats    ScheduleChat[]
+  auditLogs     AuditLog[]
+  expenses      Expense[]
+  scheduleChats ScheduleChat[]
   scheduleVersions ScheduleVersion[]
+  tenantUsers   TenantUser[]
 }
 
 model Project {
   id                    String        @id @default(uuid())
+  tenantId              String
   name                  String
   clientName            String?
   originalContract      Float
@@ -107,6 +152,7 @@ model Project {
 
 model BudgetCategory {
   id        String  @id @default(uuid())
+  tenantId  String
   name      String
   budget    Float
   projectId String
@@ -116,6 +162,7 @@ model BudgetCategory {
 
 model Expense {
   id              String        @id @default(uuid())
+  tenantId        String
   amount          Float
   currency        String        @default("USD")
   conversionRate  Float?
@@ -132,9 +179,9 @@ model Expense {
   createdBy       User          @relation(fields: [createdById], references: [id])
 }
 
-// Subcontractor agreements (fixed contracts per project)
 model SubcontractorAgreement {
   id            String                      @id @default(uuid())
+  tenantId      String
   projectId     String
   project       Project                     @relation(fields: [projectId], references: [id], onDelete: Cascade)
   subcontractorName String
@@ -147,9 +194,9 @@ model SubcontractorAgreement {
   changeOrders  SubcontractorChangeOrder[]
 }
 
-// Change orders for a subcontractor agreement
 model SubcontractorChangeOrder {
   id                  String                  @id @default(uuid())
+  tenantId            String
   agreementId         String
   agreement           SubcontractorAgreement  @relation(fields: [agreementId], references: [id], onDelete: Cascade)
   description         String
@@ -159,9 +206,9 @@ model SubcontractorChangeOrder {
   files               SubcontractorFile[]
 }
 
-// File attachments for agreements and change orders
 model SubcontractorFile {
   id              String   @id @default(uuid())
+  tenantId        String
   agreementId     String?
   agreement       SubcontractorAgreement? @relation(fields: [agreementId], references: [id], onDelete: Cascade)
   changeOrderId   String?
@@ -175,6 +222,7 @@ model SubcontractorFile {
 
 model Timesheet {
   id        String   @id @default(uuid())
+  tenantId  String
   hours     Float
   rate      Float
   date      DateTime @default(now())
@@ -186,6 +234,7 @@ model Timesheet {
 
 model ScheduleOfValue {
   id              String      @id @default(uuid())
+  tenantId        String
   projectId       String
   project         Project     @relation(fields: [projectId], references: [id], onDelete: Cascade)
   name            String
@@ -201,6 +250,7 @@ model ScheduleOfValue {
 
 model SovItem {
   id              String        @id @default(uuid())
+  tenantId        String
   sovId           String
   sov             ScheduleOfValue @relation(fields: [sovId], references: [id], onDelete: Cascade)
   itemNumber      Int
@@ -214,6 +264,7 @@ model SovItem {
 
 model ChangeOrder {
   id              String      @id @default(uuid())
+  tenantId        String
   projectId       String
   project         Project     @relation(fields: [projectId], references: [id], onDelete: Cascade)
   sovId           String?
@@ -230,9 +281,9 @@ model ChangeOrder {
   updatedAt       DateTime    @updatedAt
 }
 
-// Office employees (master record)
 model Employee {
   id                  String            @id @default(uuid())
+  tenantId            String
   name                String
   email               String
   phone               String
@@ -251,9 +302,9 @@ model Employee {
   paymentLogs         PaymentLog[]
 }
 
-// Office payroll records (per period)
 model OfficePayroll {
   id          String   @id @default(uuid())
+  tenantId    String
   employeeId  String
   employee    Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
   grossPay    Float
@@ -268,9 +319,9 @@ model OfficePayroll {
   createdAt   DateTime @default(now())
 }
 
-// Employment periods (handles re-hires)
 model EmploymentPeriod {
   id              String            @id @default(uuid())
+  tenantId        String
   employeeId      String
   employee        Employee          @relation(fields: [employeeId], references: [id], onDelete: Cascade)
   startDate       DateTime
@@ -284,9 +335,9 @@ model EmploymentPeriod {
   @@unique([employeeId, startDate])
 }
 
-// Payment log (compensation records)
 model PaymentLog {
   id                   String           @id @default(uuid())
+  tenantId             String
   employeeId           String
   employee             Employee         @relation(fields: [employeeId], references: [id], onDelete: Cascade)
   employmentPeriodId   String?
@@ -303,9 +354,9 @@ model PaymentLog {
 
 }
 
-// Field worker master record
 model FieldWorker {
   id                 String            @id @default(uuid())
+  tenantId           String
   name               String
   address            String?
   phone              String?
@@ -317,9 +368,9 @@ model FieldWorker {
   assignments        FieldWorkerAssignment[]
 }
 
-// Field worker assigned to a project with wage/benefit rates
 model FieldWorkerAssignment {
   id               String        @id @default(uuid())
+  tenantId         String
   fieldWorkerId    String
   fieldWorker      FieldWorker   @relation(fields: [fieldWorkerId], references: [id], onDelete: Cascade)
   projectId        String
@@ -333,9 +384,9 @@ model FieldWorkerAssignment {
   @@unique([fieldWorkerId, projectId])
 }
 
-// Field worker payroll per period
 model FieldWorkerPayroll {
   id               String      @id @default(uuid())
+  tenantId         String
   assignmentId     String
   assignment       FieldWorkerAssignment @relation(fields: [assignmentId], references: [id], onDelete: Cascade)
   hoursWorked      Float
@@ -352,6 +403,7 @@ model FieldWorkerPayroll {
 
 model FixedAsset {
   id            String   @id @default(uuid())
+  tenantId      String
   name          String
   category      String
   purchasePrice Float
@@ -365,6 +417,7 @@ model FixedAsset {
 
 model Payout {
   id          String   @id @default(uuid())
+  tenantId    String
   type           String
   amount         Float
   currency       String           @default("USD")
@@ -378,6 +431,7 @@ model Payout {
 
 model RecurringExpense {
   id          String   @id @default(uuid())
+  tenantId    String
   projectId   String
   project     Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
   name        String
@@ -395,6 +449,7 @@ model RecurringExpense {
 
 model AuditLog {
   id        String   @id @default(uuid())
+  tenantId  String?
   userId    String
   user      User     @relation(fields: [userId], references: [id])
   action    String
@@ -405,24 +460,9 @@ model AuditLog {
   timestamp DateTime @default(now())
 }
 
-// --- Schedule Management ---
-
-enum ScheduleFormat {
-  MSPDI
-  PMXML
-  P6PRO
-}
-
-enum TaskStatus {
-  NOT_STARTED
-  IN_PROGRESS
-  COMPLETED
-  WAITING
-  ON_HOLD
-}
-
 model ScheduleSession {
   id                String           @id @default(uuid())
+  tenantId          String
   name              String
   format            ScheduleFormat
   projectId         String?
@@ -437,6 +477,7 @@ model ScheduleSession {
 
 model ScheduleTask {
   id                String           @id @default(uuid())
+  tenantId          String
   sessionId         String
   session           ScheduleSession  @relation(fields: [sessionId], references: [id], onDelete: Cascade)
   activityId        String
@@ -461,6 +502,7 @@ model ScheduleTask {
 
 model ScheduleChat {
   id          String   @id @default(uuid())
+  tenantId    String
   sessionId   String
   session     ScheduleSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
   taskIds     String?
@@ -472,6 +514,7 @@ model ScheduleChat {
 
 model ScheduleVersion {
   id                String           @id @default(uuid())
+  tenantId          String
   sessionId         String
   session           ScheduleSession  @relation(fields: [sessionId], references: [id], onDelete: Cascade)
   versionNumber     Int

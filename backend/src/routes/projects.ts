@@ -2,16 +2,23 @@ import { Router } from 'express';
 import prisma from '../../prisma/client';
 import { authenticate, authorize, AuthRequest } from '../middleware/auth';
 import { logAction } from '../utils/audit';
+import { getTenantId } from '../utils/tenant';
 
 const router = Router();
 
 router.get('/', authenticate, async (req: AuthRequest, res) => {
   try {
+    const tenantId = getTenantId(req);
+    const tenantFilter = tenantId ? { tenantId } : {};
+    
     let projects;
     if (req.user!.role === 'CREW') {
       const user = await prisma.user.findUnique({ where: { id: req.user!.id } });
       projects = await prisma.project.findMany({
-        where: { id: { in: user?.assignedProjectIds || [] } },
+        where: { 
+          id: { in: user?.assignedProjectIds || [] },
+          ...tenantFilter 
+        },
         include: {
           budgetCategories: true,
           _count: { select: { expenses: true, timesheets: true } },
@@ -20,7 +27,10 @@ router.get('/', authenticate, async (req: AuthRequest, res) => {
     } else if (req.user!.role === 'MANAGER') {
       const user = await prisma.user.findUnique({ where: { id: req.user!.id } });
       projects = await prisma.project.findMany({
-        where: { id: { in: user?.assignedProjectIds || [] } },
+        where: { 
+          id: { in: user?.assignedProjectIds || [] },
+          ...tenantFilter 
+        },
         include: {
           budgetCategories: true,
           _count: { select: { expenses: true, timesheets: true } },
@@ -28,6 +38,7 @@ router.get('/', authenticate, async (req: AuthRequest, res) => {
       });
     } else {
       projects = await prisma.project.findMany({
+        where: tenantFilter,
         include: {
           budgetCategories: true,
           _count: { select: { expenses: true, timesheets: true } },
@@ -37,12 +48,12 @@ router.get('/', authenticate, async (req: AuthRequest, res) => {
 
     const results = await Promise.all(projects.map(async (p: any) => {
        const totalExpenses = await prisma.expense.aggregate({
-         where: { projectId: p.id },
+         where: { projectId: p.id, ...tenantFilter },
          _sum: { amountUSD: true },
        });
 
       const totalLabor = await prisma.timesheet.aggregate({
-        where: { projectId: p.id },
+        where: { projectId: p.id, ...tenantFilter },
         _sum: { hours: true },
       });
       return {
@@ -62,8 +73,14 @@ router.get('/', authenticate, async (req: AuthRequest, res) => {
 
 router.get('/:id', authenticate, async (req: AuthRequest, res) => {
   try {
+    const tenantId = getTenantId(req);
+    const tenantFilter = tenantId ? { tenantId } : {};
+    
     const project = await prisma.project.findUnique({
-      where: { id: req.params.id },
+      where: { 
+        id: req.params.id,
+        ...tenantFilter
+      },
       include: {
         budgetCategories: { include: { expenses: true } },
         expenses: { orderBy: { date: 'desc' } },
@@ -90,8 +107,12 @@ router.get('/:id', authenticate, async (req: AuthRequest, res) => {
 
 router.post('/', authenticate, authorize('OWNER', 'MANAGER'), async (req: AuthRequest, res) => {
   try {
+    const tenantId = getTenantId(req);
     const project = await prisma.project.create({
-      data: req.body,
+      data: {
+        ...req.body,
+        tenantId: tenantId || req.body.tenantId,
+      },
     });
     await logAction(req.user!.id, 'CREATE', 'Project', project.id, null, JSON.stringify(req.body));
     res.status(201).json(project);
@@ -102,10 +123,15 @@ router.post('/', authenticate, authorize('OWNER', 'MANAGER'), async (req: AuthRe
 
 router.put('/:id', authenticate, authorize('OWNER', 'MANAGER'), async (req: AuthRequest, res) => {
   try {
-    const old = await prisma.project.findUnique({ where: { id: req.params.id } });
+    const tenantId = getTenantId(req);
+    const tenantFilter = tenantId ? { tenantId } : {};
+    
+    const old = await prisma.project.findUnique({ where: { id: req.params.id, ...tenantFilter } });
+    if (!old) return res.status(404).json({ error: 'Project not found' });
+    
     const project = await prisma.project.update({
       where: { id: req.params.id },
-      data: req.body,
+      data: { ...req.body, tenantId: tenantId || req.body.tenantId },
     });
     await logAction(req.user!.id, 'UPDATE', 'Project', req.params.id, JSON.stringify(old), JSON.stringify(req.body));
     res.json(project);
@@ -116,6 +142,12 @@ router.put('/:id', authenticate, authorize('OWNER', 'MANAGER'), async (req: Auth
 
 router.delete('/:id', authenticate, authorize('OWNER'), async (req: AuthRequest, res) => {
   try {
+    const tenantId = getTenantId(req);
+    const tenantFilter = tenantId ? { tenantId } : {};
+    
+    const project = await prisma.project.findUnique({ where: { id: req.params.id, ...tenantFilter } });
+    if (!project) return res.status(404).json({ error: 'Project not found' });
+    
     await prisma.project.delete({ where: { id: req.params.id } });
     await logAction(req.user!.id, 'DELETE', 'Project', req.params.id, null, null);
     res.json({ message: 'Project deleted' });

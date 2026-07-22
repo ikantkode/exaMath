@@ -2,13 +2,17 @@ import { Router } from 'express';
 import prisma from '../../prisma/client';
 import { authenticate, authorize, AuthRequest } from '../middleware/auth';
 import { logAction } from '../utils/audit';
+import { getTenantId } from '../utils/tenant';
 
 const router = Router();
 
 router.get('/', authenticate, async (req: AuthRequest, res) => {
   try {
+    const tenantId = getTenantId(req);
+    const tenantFilter = tenantId ? { tenantId } : {};
+    
     const { projectId, categoryId, expenseType } = req.query;
-    const where: any = {};
+    const where: any = { ...tenantFilter };
     if (projectId) where.projectId = projectId as string;
     if (categoryId) where.categoryId = categoryId as string;
     if (expenseType) where.expenseType = expenseType as string;
@@ -26,6 +30,7 @@ router.get('/', authenticate, async (req: AuthRequest, res) => {
 
 router.post('/', authenticate, authorize('OWNER', 'MANAGER'), async (req: AuthRequest, res) => {
   try {
+    const tenantId = getTenantId(req);
     const { amount, currency, conversionRate, description, expenseType, date, categoryId, projectId } = req.body;
     const cleanCurrency = currency || 'USD';
     const rate = cleanCurrency === 'PKR' ? (conversionRate || 0) : 1;
@@ -42,6 +47,7 @@ router.post('/', authenticate, authorize('OWNER', 'MANAGER'), async (req: AuthRe
         categoryId: categoryId || null,
         projectId,
         createdById: req.user!.id,
+        tenantId: tenantId || req.body.tenantId,
       },
     });
     await logAction(req.user!.id, 'CREATE', 'Expense', expense.id, null, JSON.stringify(req.body));
@@ -53,11 +59,15 @@ router.post('/', authenticate, authorize('OWNER', 'MANAGER'), async (req: AuthRe
 
 router.put('/:id', authenticate, authorize('OWNER', 'MANAGER'), async (req: AuthRequest, res) => {
   try {
-    const old = await prisma.expense.findUnique({ where: { id: req.params.id } });
+    const tenantId = getTenantId(req);
+    const tenantFilter = tenantId ? { tenantId } : {};
+    
+    const old = await prisma.expense.findUnique({ where: { id: req.params.id, ...tenantFilter } });
+    if (!old) return res.status(404).json({ error: 'Expense not found' });
+    
     const { amount, currency, conversionRate, description, expenseType, date, categoryId, projectId } = req.body;
-    const existing = old as any;
-    const cleanCurrency = currency || existing?.currency || 'USD';
-    const rate = cleanCurrency === 'PKR' ? (conversionRate || existing?.conversionRate || 0) : 1;
+    const cleanCurrency = currency || (old as any)?.currency || 'USD';
+    const rate = cleanCurrency === 'PKR' ? (conversionRate || (old as any)?.conversionRate || 0) : 1;
     const amountUSD = cleanCurrency === 'PKR' ? amount * rate : amount;
     const expense = await prisma.expense.update({
       where: { id: req.params.id },
@@ -82,6 +92,12 @@ router.put('/:id', authenticate, authorize('OWNER', 'MANAGER'), async (req: Auth
 
 router.delete('/:id', authenticate, authorize('OWNER'), async (req: AuthRequest, res) => {
   try {
+    const tenantId = getTenantId(req);
+    const tenantFilter = tenantId ? { tenantId } : {};
+    
+    const expense = await prisma.expense.findUnique({ where: { id: req.params.id, ...tenantFilter } });
+    if (!expense) return res.status(404).json({ error: 'Expense not found' });
+    
     await prisma.expense.delete({ where: { id: req.params.id } });
     await logAction(req.user!.id, 'DELETE', 'Expense', req.params.id, null, null);
     res.json({ message: 'Expense deleted' });

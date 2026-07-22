@@ -2,6 +2,7 @@ import { Router } from 'express';
 import prisma from '../../prisma/client';
 import { authenticate, authorize, AuthRequest } from '../middleware/auth';
 import { logAction } from '../utils/audit';
+import { getTenantId } from '../utils/tenant';
 
 const router = Router();
 
@@ -10,8 +11,11 @@ const router = Router();
 // Get all SOVs for a project
 router.get('/project/:projectId', authenticate, async (req: AuthRequest, res) => {
   try {
+    const tenantId = getTenantId(req);
+    const tenantFilter = tenantId ? { tenantId } : {};
+    
     const sovs = await prisma.scheduleOfValue.findMany({
-      where: { projectId: req.params.projectId },
+      where: { projectId: req.params.projectId, ...tenantFilter },
       include: { items: { orderBy: { itemNumber: 'asc' } } },
       orderBy: { createdAt: 'desc' },
     });
@@ -24,7 +28,9 @@ router.get('/project/:projectId', authenticate, async (req: AuthRequest, res) =>
 // Create SOV for a project (single SOV per project enforced)
 router.post('/project/:projectId', authenticate, authorize('OWNER', 'MANAGER'), async (req: AuthRequest, res) => {
   try {
-    const existing = await prisma.scheduleOfValue.findFirst({ where: { projectId: req.params.projectId } });
+    const tenantId = getTenantId(req);
+    
+    const existing = await prisma.scheduleOfValue.findFirst({ where: { projectId: req.params.projectId, tenantId: tenantId || req.body.tenantId } });
     if (existing) return res.status(409).json({ error: 'Project already has a Schedule of Values' });
 
     const { name, items } = req.body;
@@ -34,6 +40,7 @@ router.post('/project/:projectId', authenticate, authorize('OWNER', 'MANAGER'), 
         projectId: req.params.projectId,
         name: name || 'Schedule of Values',
         totalValue,
+        tenantId: tenantId || req.body.tenantId,
         items: items ? { create: items } : undefined,
       },
       include: { items: true },
@@ -48,8 +55,11 @@ router.post('/project/:projectId', authenticate, authorize('OWNER', 'MANAGER'), 
 // Get single SOV with items
 router.get('/sov/:sovId', authenticate, async (req: AuthRequest, res) => {
   try {
+    const tenantId = getTenantId(req);
+    const tenantFilter = tenantId ? { tenantId } : {};
+    
     const sov = await prisma.scheduleOfValue.findUnique({
-      where: { id: req.params.sovId },
+      where: { id: req.params.sovId, ...tenantFilter },
       include: {
         items: { orderBy: { itemNumber: 'asc' } },
         changeOrders: { orderBy: { createdAt: 'asc' } },
@@ -65,7 +75,10 @@ router.get('/sov/:sovId', authenticate, async (req: AuthRequest, res) => {
 // Update SOV name (only in DRAFT)
 router.put('/sov/:sovId', authenticate, authorize('OWNER', 'MANAGER'), async (req: AuthRequest, res) => {
   try {
-    const sov = await prisma.scheduleOfValue.findUnique({ where: { id: req.params.sovId } });
+    const tenantId = getTenantId(req);
+    const tenantFilter = tenantId ? { tenantId } : {};
+    
+    const sov = await prisma.scheduleOfValue.findUnique({ where: { id: req.params.sovId, ...tenantFilter } });
     if (!sov) return res.status(404).json({ error: 'Not found' });
     if (sov.status !== 'DRAFT') return res.status(400).json({ error: 'Cannot update locked SOV' });
     const updated = await prisma.scheduleOfValue.update({
@@ -82,7 +95,10 @@ router.put('/sov/:sovId', authenticate, authorize('OWNER', 'MANAGER'), async (re
 // Submit SOV for approval
 router.post('/sov/:sovId/submit', authenticate, authorize('OWNER', 'MANAGER'), async (req: AuthRequest, res) => {
   try {
-    const sov = await prisma.scheduleOfValue.findUnique({ where: { id: req.params.sovId } });
+    const tenantId = getTenantId(req);
+    const tenantFilter = tenantId ? { tenantId } : {};
+    
+    const sov = await prisma.scheduleOfValue.findUnique({ where: { id: req.params.sovId, ...tenantFilter } });
     if (!sov) return res.status(404).json({ error: 'Not found' });
     if (sov.status !== 'DRAFT') return res.status(400).json({ error: 'Only drafts can be submitted' });
     const updated = await prisma.scheduleOfValue.update({
@@ -99,7 +115,10 @@ router.post('/sov/:sovId/submit', authenticate, authorize('OWNER', 'MANAGER'), a
 // Approve SOV (locks it)
 router.post('/sov/:sovId/approve', authenticate, authorize('OWNER'), async (req: AuthRequest, res) => {
   try {
-    const sov = await prisma.scheduleOfValue.findUnique({ where: { id: req.params.sovId } });
+    const tenantId = getTenantId(req);
+    const tenantFilter = tenantId ? { tenantId } : {};
+    
+    const sov = await prisma.scheduleOfValue.findUnique({ where: { id: req.params.sovId, ...tenantFilter } });
     if (!sov) return res.status(404).json({ error: 'Not found' });
     if (sov.status !== 'SUBMITTED') return res.status(400).json({ error: 'Only submitted SOVs can be approved' });
     const updated = await prisma.scheduleOfValue.update({
@@ -116,7 +135,10 @@ router.post('/sov/:sovId/approve', authenticate, authorize('OWNER'), async (req:
 // Revert SOV to draft (only OWNER)
 router.post('/sov/:sovId/revert', authenticate, authorize('OWNER'), async (req: AuthRequest, res) => {
   try {
-    const sov = await prisma.scheduleOfValue.findUnique({ where: { id: req.params.sovId } });
+    const tenantId = getTenantId(req);
+    const tenantFilter = tenantId ? { tenantId } : {};
+    
+    const sov = await prisma.scheduleOfValue.findUnique({ where: { id: req.params.sovId, ...tenantFilter } });
     if (!sov) return res.status(404).json({ error: 'Not found' });
     if (sov.status === 'DRAFT') return res.status(400).json({ error: 'Already a draft' });
     const updated = await prisma.scheduleOfValue.update({
@@ -133,7 +155,10 @@ router.post('/sov/:sovId/revert', authenticate, authorize('OWNER'), async (req: 
 // Delete SOV (only DRAFT)
 router.delete('/sov/:sovId', authenticate, authorize('OWNER'), async (req: AuthRequest, res) => {
   try {
-    const sov = await prisma.scheduleOfValue.findUnique({ where: { id: req.params.sovId } });
+    const tenantId = getTenantId(req);
+    const tenantFilter = tenantId ? { tenantId } : {};
+    
+    const sov = await prisma.scheduleOfValue.findUnique({ where: { id: req.params.sovId, ...tenantFilter } });
     if (!sov) return res.status(404).json({ error: 'Not found' });
     if (sov.status !== 'DRAFT') return res.status(400).json({ error: 'Cannot delete non-draft SOV' });
     await prisma.scheduleOfValue.delete({ where: { id: req.params.sovId } });
@@ -147,7 +172,10 @@ router.delete('/sov/:sovId', authenticate, authorize('OWNER'), async (req: AuthR
 // Upsert an item in an SOV
 router.put('/sov/:sovId/items/:itemId', authenticate, authorize('OWNER', 'MANAGER'), async (req: AuthRequest, res) => {
   try {
-    const sov = await prisma.scheduleOfValue.findUnique({ where: { id: req.params.sovId } });
+    const tenantId = getTenantId(req);
+    const tenantFilter = tenantId ? { tenantId } : {};
+    
+    const sov = await prisma.scheduleOfValue.findUnique({ where: { id: req.params.sovId, ...tenantFilter } });
     if (!sov) return res.status(404).json({ error: 'Not found' });
     if (sov.status !== 'DRAFT') return res.status(400).json({ error: 'Cannot edit locked SOV' });
 
@@ -162,12 +190,12 @@ router.put('/sov/:sovId/items/:itemId', authenticate, authorize('OWNER', 'MANAGE
       });
     } else {
       item = await prisma.sovItem.create({
-        data: { sovId: req.params.sovId, itemNumber, csiCode, csiCodeTitle, description, value },
+        data: { sovId: req.params.sovId, itemNumber, csiCode, csiCodeTitle, description, value, tenantId: tenantId || req.body.tenantId },
       });
     }
 
     const totalValue = await prisma.sovItem.aggregate({
-      where: { sovId: req.params.sovId },
+      where: { sovId: req.params.sovId, tenantId: tenantId || req.body.tenantId },
       _sum: { value: true },
     });
     await prisma.scheduleOfValue.update({
@@ -185,18 +213,22 @@ router.put('/sov/:sovId/items/:itemId', authenticate, authorize('OWNER', 'MANAGE
 // Create new item
 router.post('/sov/:sovId/items', authenticate, authorize('OWNER', 'MANAGER'), async (req: AuthRequest, res) => {
   try {
-    const sov = await prisma.scheduleOfValue.findUnique({ where: { id: req.params.sovId } });
+    const tenantId = getTenantId(req);
+    const tenantFilter = tenantId ? { tenantId } : {};
+    
+    const sov = await prisma.scheduleOfValue.findUnique({ where: { id: req.params.sovId, ...tenantFilter } });
     if (!sov) return res.status(404).json({ error: 'Not found' });
     if (sov.status !== 'DRAFT') return res.status(400).json({ error: 'Cannot add items to locked SOV' });
 
     const nextNum = await prisma.sovItem.aggregate({
-      where: { sovId: req.params.sovId },
+      where: { sovId: req.params.sovId, tenantId: tenantId || req.body.tenantId },
       _max: { itemNumber: true },
     });
 
     const item = await prisma.sovItem.create({
       data: {
         sovId: req.params.sovId,
+        tenantId: tenantId || req.body.tenantId,
         itemNumber: (nextNum._max.itemNumber || 0) + 1,
         csiCode: '',
         csiCodeTitle: '',
@@ -207,7 +239,7 @@ router.post('/sov/:sovId/items', authenticate, authorize('OWNER', 'MANAGER'), as
     });
 
     const totalValue = await prisma.sovItem.aggregate({
-      where: { sovId: req.params.sovId },
+      where: { sovId: req.params.sovId, tenantId: tenantId || req.body.tenantId },
       _sum: { value: true },
     });
     await prisma.scheduleOfValue.update({
@@ -225,14 +257,17 @@ router.post('/sov/:sovId/items', authenticate, authorize('OWNER', 'MANAGER'), as
 // Delete item
 router.delete('/sov/:sovId/items/:itemId', authenticate, authorize('OWNER', 'MANAGER'), async (req: AuthRequest, res) => {
   try {
-    const sov = await prisma.scheduleOfValue.findUnique({ where: { id: req.params.sovId } });
+    const tenantId = getTenantId(req);
+    const tenantFilter = tenantId ? { tenantId } : {};
+    
+    const sov = await prisma.scheduleOfValue.findUnique({ where: { id: req.params.sovId, ...tenantFilter } });
     if (!sov) return res.status(404).json({ error: 'Not found' });
     if (sov.status !== 'DRAFT') return res.status(400).json({ error: 'Cannot delete items from locked SOV' });
 
-    await prisma.sovItem.delete({ where: { id: req.params.itemId } });
+    await prisma.sovItem.delete({ where: { id: req.params.itemId, tenantId: tenantId || req.body.tenantId } });
 
     const totalValue = await prisma.sovItem.aggregate({
-      where: { sovId: req.params.sovId },
+      where: { sovId: req.params.sovId, tenantId: tenantId || req.body.tenantId },
       _sum: { value: true },
     });
     await prisma.scheduleOfValue.update({
@@ -252,9 +287,12 @@ router.delete('/sov/:sovId/items/:itemId', authenticate, authorize('OWNER', 'MAN
 // Create change order for a project
 router.post('/project/:projectId/change-orders', authenticate, authorize('OWNER', 'MANAGER'), async (req: AuthRequest, res) => {
   try {
+    const tenantId = getTenantId(req);
+    
     const co = await prisma.changeOrder.create({
       data: {
         projectId: req.params.projectId,
+        tenantId: tenantId || req.body.tenantId,
         ...req.body,
       },
     });
@@ -268,8 +306,11 @@ router.post('/project/:projectId/change-orders', authenticate, authorize('OWNER'
 // Get change orders for a project
 router.get('/project/:projectId/change-orders', authenticate, async (req: AuthRequest, res) => {
   try {
+    const tenantId = getTenantId(req);
+    const tenantFilter = tenantId ? { tenantId } : {};
+    
     const cos = await prisma.changeOrder.findMany({
-      where: { projectId: req.params.projectId },
+      where: { projectId: req.params.projectId, ...tenantFilter },
       orderBy: { createdAt: 'desc' },
     });
     res.json(cos);
@@ -281,7 +322,10 @@ router.get('/project/:projectId/change-orders', authenticate, async (req: AuthRe
 // Update change order
 router.put('/project/:projectId/change-orders/:coId', authenticate, authorize('OWNER', 'MANAGER'), async (req: AuthRequest, res) => {
   try {
-    const co = await prisma.changeOrder.findUnique({ where: { id: req.params.coId } });
+    const tenantId = getTenantId(req);
+    const tenantFilter = tenantId ? { tenantId } : {};
+    
+    const co = await prisma.changeOrder.findUnique({ where: { id: req.params.coId, ...tenantFilter } });
     if (!co) return res.status(404).json({ error: 'Not found' });
     if (co.status === 'LOCKED') return res.status(400).json({ error: 'Cannot edit locked change order' });
     const updated = await prisma.changeOrder.update({
@@ -298,7 +342,10 @@ router.put('/project/:projectId/change-orders/:coId', authenticate, authorize('O
 // Approve change order
 router.post('/project/:projectId/change-orders/:coId/approve', authenticate, authorize('OWNER'), async (req: AuthRequest, res) => {
   try {
-    const co = await prisma.changeOrder.findUnique({ where: { id: req.params.coId } });
+    const tenantId = getTenantId(req);
+    const tenantFilter = tenantId ? { tenantId } : {};
+    
+    const co = await prisma.changeOrder.findUnique({ where: { id: req.params.coId, ...tenantFilter } });
     if (!co) return res.status(404).json({ error: 'Not found' });
     if (co.status === 'LOCKED') return res.status(400).json({ error: 'Already approved' });
     const updated = await prisma.changeOrder.update({
@@ -306,7 +353,7 @@ router.post('/project/:projectId/change-orders/:coId/approve', authenticate, aut
       data: { status: 'LOCKED', approvedBy: req.user!.id, approvedAt: new Date() },
     });
     const allCos = await prisma.changeOrder.aggregate({
-      where: { projectId: co.projectId, status: 'LOCKED' },
+      where: { projectId: co.projectId, status: 'LOCKED', tenantId: tenantId || req.body.tenantId },
       _sum: { value: true },
     });
     await prisma.project.update({
@@ -323,7 +370,10 @@ router.post('/project/:projectId/change-orders/:coId/approve', authenticate, aut
 // Delete change order (only DRAFT)
 router.delete('/project/:projectId/change-orders/:coId', authenticate, authorize('OWNER'), async (req: AuthRequest, res) => {
   try {
-    const co = await prisma.changeOrder.findUnique({ where: { id: req.params.coId } });
+    const tenantId = getTenantId(req);
+    const tenantFilter = tenantId ? { tenantId } : {};
+    
+    const co = await prisma.changeOrder.findUnique({ where: { id: req.params.coId, ...tenantFilter } });
     if (!co) return res.status(404).json({ error: 'Not found' });
     if (co.status !== 'DRAFT') return res.status(400).json({ error: 'Cannot delete non-draft change order' });
     await prisma.changeOrder.delete({ where: { id: req.params.coId } });

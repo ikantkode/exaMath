@@ -2,7 +2,7 @@ import { Router } from 'express';
 import bcrypt from 'bcrypt';
 import jwt from 'jsonwebtoken';
 import prisma from '../../prisma/client';
-import { authenticate, AuthRequest } from '../middleware/auth';
+import { authenticate, AuthRequest, AuthUser } from '../middleware/auth';
 import { JWT_SECRET } from '../index';
 
 const router = Router();
@@ -73,11 +73,24 @@ router.post('/login', async (req, res) => {
       return res.status(401).json({ error: 'Invalid credentials' });
     }
 
-    const token = jwt.sign(
-      { id: user.id, role: user.role, email: user.email },
-      JWT_SECRET,
-      { expiresIn: '24h' }
-    );
+    // Resolve tenant context from TenantUser
+    const tenantUser = await prisma.tenantUser.findFirst({
+      where: { userId: user.id },
+      orderBy: { createdAt: 'asc' },
+    });
+
+    const payload: AuthUser = {
+      id: user.id,
+      role: user.role,
+      email: user.email,
+    };
+
+    if (tenantUser) {
+      payload.tenantId = tenantUser.tenantId;
+      payload.tenantRole = tenantUser.role;
+    }
+
+    const token = jwt.sign(payload, JWT_SECRET, { expiresIn: '24h' });
 
     res.json({
       token,
@@ -96,7 +109,16 @@ router.post('/login', async (req, res) => {
 // Get current user
 router.get('/me', authenticate, async (req: AuthRequest, res) => {
    try {
-     const user = await prisma.user.findUnique({ where: { id: req.user!.id } });
+     const user = await prisma.user.findUnique({
+       where: { id: req.user!.id },
+       include: {
+         tenantUsers: {
+           include: {
+             tenant: { select: { id: true, name: true, slug: true } },
+           },
+         },
+       },
+     });
      if (!user) return res.status(404).json({ error: 'User not found' });
 
      res.json({
@@ -105,6 +127,12 @@ router.get('/me', authenticate, async (req: AuthRequest, res) => {
        email: user.email,
        role: user.role,
        assignedProjectIds: user.assignedProjectIds,
+       tenants: user.tenantUsers.map(tu => ({
+         tenantId: tu.tenant.id,
+         tenantName: tu.tenant.name,
+         tenantSlug: tu.tenant.slug,
+         role: tu.role,
+       })),
      });
    } catch (error) {
      res.status(500).json({ error: 'Failed to get user' });
