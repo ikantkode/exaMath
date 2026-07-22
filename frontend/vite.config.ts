@@ -5,6 +5,7 @@ import path from 'path';
 
 export default defineConfig({
   plugins: [react(), tailwindcss()],
+  cacheDir: '/tmp/vite-frontend',
   resolve: {
     alias: {
       '@': path.resolve(__dirname, './src'),
@@ -15,11 +16,11 @@ export default defineConfig({
     port: 5173,
     proxy: {
       '/api': {
-        target: 'http://backend:3001',
+        target: 'http://localhost:3001',
         changeOrigin: true,
       },
       '/uploads': {
-        target: 'http://backend:3001',
+        target: 'http://localhost:3001',
         changeOrigin: true,
       },
     },
