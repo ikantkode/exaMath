@@ -1,7 +1,6 @@
 import { Request, Response, NextFunction } from 'express';
 import jwt from 'jsonwebtoken';
 import { JWT_SECRET } from '../index';
-import prisma from '../../prisma/client';
 
 export interface AuthUser {
   id: string;

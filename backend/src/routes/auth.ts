@@ -127,7 +127,7 @@ router.get('/me', authenticate, async (req: AuthRequest, res) => {
        email: user.email,
        role: user.role,
        assignedProjectIds: user.assignedProjectIds,
-       tenants: user.tenantUsers.map(tu => ({
+        tenants: user.tenantUsers.map((tu: any) => ({
          tenantId: tu.tenant.id,
          tenantName: tu.tenant.name,
          tenantSlug: tu.tenant.slug,
