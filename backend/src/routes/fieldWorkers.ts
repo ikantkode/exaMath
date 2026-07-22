@@ -71,7 +71,13 @@ router.post('/assignments', authenticate, authorize('OWNER', 'MANAGER'), async (
     if (project.wageType === 'UNION' && (!benefitRate || benefitRate <= 0)) return res.status(400).json({ error: 'Benefit rate is required for union projects' });
     if ((project.wageType === 'PREVAILING' || project.wageType === 'PRIVATE') && !wageRate) return res.status(400).json({ error: 'Wage rate is required' });
     const assignment = await prisma.fieldWorkerAssignment.create({
-      data: { fieldWorkerId, projectId, wageRate: wageRate || 0, benefitRate: benefitRate || 0 },
+      data: {
+        tenantId: req.tenantId!,
+        fieldWorkerId,
+        projectId,
+        wageRate: wageRate || 0,
+        benefitRate: benefitRate || 0,
+      } as any,
     });
     await logAction(req.user!.id, 'CREATE', 'FieldWorkerAssignment', assignment.id);
     res.status(201).json(assignment);
@@ -133,7 +139,18 @@ router.post('/payroll', authenticate, authorize('OWNER', 'MANAGER'), async (req:
     }
     const netPay = grossWages + grossBenefits - (taxes || 0) - (deductions || 0);
     const entry = await prisma.fieldWorkerPayroll.create({
-      data: { assignmentId, hoursWorked, grossWages, grossBenefits, taxes: taxes || 0, deductions: deductions || 0, netPay, periodStart, periodEnd },
+      data: {
+        tenantId: req.tenantId!,
+        assignmentId,
+        hoursWorked,
+        grossWages,
+        grossBenefits,
+        taxes: taxes || 0,
+        deductions: deductions || 0,
+        netPay,
+        periodStart,
+        periodEnd,
+      } as any,
     });
     await logAction(req.user!.id, 'CREATE', 'FieldWorkerPayroll', entry.id);
     res.status(201).json(entry);

@@ -43,6 +43,7 @@ router.post('/', authenticate, authorize('OWNER', 'MANAGER'), async (req: AuthRe
         tenantId: tenantId || req.body.tenantId,
         employmentPeriods: {
           create: {
+            tenantId: tenantId || req.body.tenantId,
             startDate: new Date(startDate),
             endDate: endDate ? new Date(endDate) : null,
             salary: salary ? parseFloat(salary) : null,
