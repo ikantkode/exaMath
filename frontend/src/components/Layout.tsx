@@ -16,7 +16,7 @@ import {
 import {
   LayoutDashboard, FolderKanban, DollarSign,
   FileText, Truck, Wallet, Shield, LogOut, ChevronRight,
-  Building2, Settings, Users, HardHat, Calendar
+  Building2, Settings, Users, HardHat, Calendar, Building
 } from 'lucide-react';
 
 interface NavItem {
@@ -27,10 +27,12 @@ interface NavItem {
 }
 
 const Layout = () => {
-  const { user, logout } = useAuth();
+  const { user, logout, switchTenant } = useAuth();
   const location = useLocation();
   const navigate = useNavigate();
   const [sidebarOpen, setSidebarOpen] = useState(true);
+  const tenants = user?.tenants || [];
+  const currentTenant = tenants.find(t => t.tenantId === user?.tenantId);
 
   const isOwner = user?.role === 'OWNER';
   const isManager = user?.role === 'MANAGER' || isOwner;
@@ -133,6 +135,27 @@ const Layout = () => {
                   </div>
                 </DropdownMenuLabel>
               </DropdownMenuGroup>
+              {tenants.length > 1 && (
+                <>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuLabel className="flex items-center gap-2 text-xs font-normal text-muted-foreground">
+                    <Building className="h-3 w-3" />
+                    <span>Organization</span>
+                  </DropdownMenuLabel>
+                  {tenants.map(tenant => (
+                    <DropdownMenuItem
+                      key={tenant.tenantId}
+                      onClick={() => switchTenant(tenant.tenantId)}
+                      className="flex flex-col items-start"
+                    >
+                      <span className="text-sm">{tenant.tenantName}</span>
+                      <span className="text-xs text-muted-foreground">
+                        {tenant.role} · {tenant.tenantSlug}
+                      </span>
+                    </DropdownMenuItem>
+                  ))}
+                </>
+              )}
               <DropdownMenuSeparator />
               <DropdownMenuItem onClick={() => navigate('/settings')}>
                 <Settings className="mr-2 h-4 w-4" />

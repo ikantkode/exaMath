@@ -17,7 +17,7 @@ router.get('/setup-status', async (_req, res) => {
   }
 });
 
-// Register — first user becomes OWNER automatically
+// Register — first user becomes OWNER automatically and creates default tenant
 router.post('/register', async (req, res) => {
   try {
     const { name, email, password } = req.body;
@@ -29,13 +29,38 @@ router.post('/register', async (req, res) => {
 
     const userCount = await prisma.user.count();
     const hashedPassword = await bcrypt.hash(password, 10);
-    const user = await prisma.user.create({
-      data: {
-        name,
-        email,
-        password: hashedPassword,
-        role: userCount === 0 ? 'OWNER' : 'CREW',
-      },
+
+    const user = await prisma.$transaction(async (tx) => {
+      const u = await tx.user.create({
+        data: {
+          name,
+          email,
+          password: hashedPassword,
+          role: userCount === 0 ? 'OWNER' : 'CREW',
+        },
+      });
+
+      // First user creates default tenant
+      if (userCount === 0) {
+        const slug = email.split('@')[0].toLowerCase().replace(/[^a-z0-9]/g, '-');
+        const schemaName = `tenant_${slug}`;
+        const tenant = await tx.tenant.create({
+          data: {
+            name: `${name}'s Company`,
+            slug,
+            schemaName,
+          },
+        });
+        await tx.tenantUser.create({
+          data: {
+            tenantId: tenant.id,
+            userId: u.id,
+            role: 'OWNER',
+          },
+        });
+      }
+
+      return u;
     });
 
     const token = jwt.sign(
@@ -73,11 +98,21 @@ router.post('/login', async (req, res) => {
       return res.status(401).json({ error: 'Invalid credentials' });
     }
 
-    // Resolve tenant context from TenantUser
-    const tenantUser = await prisma.tenantUser.findFirst({
-      where: { userId: user.id },
-      orderBy: { createdAt: 'asc' },
-    });
+    // Resolve tenant context from TenantUser — respect X-Tenant-Id header
+    const requestedTenantId = (req as any).headers?.['x-tenant-id'] || (req as any).query?.tenantId;
+    
+    let tenantUser: any = null;
+    if (requestedTenantId) {
+      tenantUser = await prisma.tenantUser.findFirst({
+        where: { userId: user.id, tenantId: requestedTenantId },
+      });
+    }
+    if (!tenantUser) {
+      tenantUser = await prisma.tenantUser.findFirst({
+        where: { userId: user.id },
+        orderBy: { createdAt: 'asc' },
+      });
+    }
 
     const payload: AuthUser = {
       id: user.id,
@@ -99,6 +134,9 @@ router.post('/login', async (req, res) => {
         name: user.name,
         email: user.email,
         role: user.role,
+        tenantId: tenantUser?.tenantId,
+        tenantRole: tenantUser?.role,
+        assignedProjectIds: user.assignedProjectIds,
       },
     });
   } catch (error) {

@@ -2,8 +2,11 @@ export const API_URL = '/api';
 
 function getAuthHeaders(): Record<string, string> {
   const token = localStorage.getItem('token');
-  if (token) return { Authorization: `Bearer ${token}` };
-  return {};
+  const tenantId = localStorage.getItem('tenantId');
+  const headers: Record<string, string> = {};
+  if (token) headers.Authorization = `Bearer ${token}`;
+  if (tenantId) headers['x-tenant-id'] = tenantId;
+  return headers;
 }
 
 export const api = {

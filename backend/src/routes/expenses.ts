@@ -52,7 +52,8 @@ router.post('/', authenticate, authorize('OWNER', 'MANAGER'), async (req: AuthRe
     });
     await logAction(req.user!.id, 'CREATE', 'Expense', expense.id, null, JSON.stringify(req.body));
     res.status(201).json(expense);
-  } catch (error) {
+  } catch (error: any) {
+    console.error('Expense create error:', error.message, error.errors);
     res.status(500).json({ error: 'Failed to create expense' });
   }
 });

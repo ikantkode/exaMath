@@ -1,12 +1,22 @@
 import { createContext, useContext, useState, useEffect, type ReactNode } from 'react';
 import { api } from '../utils/api';
 
+interface TenantInfo {
+  tenantId: string;
+  tenantName: string;
+  tenantSlug: string;
+  role: string;
+}
+
 interface User {
   id: string;
   name: string;
   email: string;
   role: string;
   assignedProjectIds?: string[];
+  tenantId?: string;
+  tenantRole?: string;
+  tenants?: TenantInfo[];
 }
 
 interface AuthContextType {
@@ -14,6 +24,7 @@ interface AuthContextType {
   updateUser: (updated: User) => void;
   login: (email: string, password: string) => Promise<void>;
   logout: () => void;
+  switchTenant: (tenantId: string) => void;
   isLoading: boolean;
 }
 
@@ -41,12 +52,25 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const login = async (email: string, password: string) => {
     const data = await api.post<{ token: string; user: User }>('/auth/login', { email, password });
     localStorage.setItem('token', data.token);
+    if (data.user?.tenantId) {
+      localStorage.setItem('tenantId', data.user.tenantId);
+    }
+    if (data.user?.tenants) {
+      localStorage.setItem('userTenants', JSON.stringify(data.user.tenants));
+    }
     setUser(data.user);
   };
 
   const logout = () => {
     localStorage.removeItem('token');
+    localStorage.removeItem('tenantId');
+    localStorage.removeItem('userTenants');
     setUser(null);
+  };
+
+  const switchTenant = (tenantId: string) => {
+    localStorage.setItem('tenantId', tenantId);
+    window.location.reload();
   };
 
   const updateUser = (updated: User) => {
@@ -54,7 +78,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   };
 
   return (
-    <AuthContext.Provider value={{ user, updateUser, login, logout, isLoading }}>
+    <AuthContext.Provider value={{ user, updateUser, login, logout, switchTenant, isLoading }}>
       {children}
     </AuthContext.Provider>
   );

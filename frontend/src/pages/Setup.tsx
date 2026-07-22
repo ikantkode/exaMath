@@ -39,6 +39,7 @@ const Setup = () => {
         password,
       });
       localStorage.setItem('token', data.token);
+      localStorage.setItem('tenantId', '');
       window.location.href = '/dashboard';
     } catch (err: any) {
       setError(err.message || 'Failed to create account');

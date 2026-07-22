@@ -12,31 +12,7 @@ router.get('/', authenticate, async (req: AuthRequest, res) => {
     const tenantFilter = tenantId ? { tenantId } : {};
     
     let projects;
-    if (req.user!.role === 'CREW') {
-      const user = await prisma.user.findUnique({ where: { id: req.user!.id } });
-      projects = await prisma.project.findMany({
-        where: { 
-          id: { in: user?.assignedProjectIds || [] },
-          ...tenantFilter 
-        },
-        include: {
-          budgetCategories: true,
-          _count: { select: { expenses: true, timesheets: true } },
-        },
-      });
-    } else if (req.user!.role === 'MANAGER') {
-      const user = await prisma.user.findUnique({ where: { id: req.user!.id } });
-      projects = await prisma.project.findMany({
-        where: { 
-          id: { in: user?.assignedProjectIds || [] },
-          ...tenantFilter 
-        },
-        include: {
-          budgetCategories: true,
-          _count: { select: { expenses: true, timesheets: true } },
-        },
-      });
-    } else {
+    if (req.user!.role === 'OWNER') {
       projects = await prisma.project.findMany({
         where: tenantFilter,
         include: {
@@ -44,6 +20,29 @@ router.get('/', authenticate, async (req: AuthRequest, res) => {
           _count: { select: { expenses: true, timesheets: true } },
         },
       });
+    } else {
+      const user = await prisma.user.findUnique({ where: { id: req.user!.id } });
+      const projectIds = user?.assignedProjectIds || [];
+      if (projectIds.length > 0) {
+        projects = await prisma.project.findMany({
+          where: { 
+            id: { in: projectIds },
+            ...tenantFilter 
+          },
+          include: {
+            budgetCategories: true,
+            _count: { select: { expenses: true, timesheets: true } },
+          },
+        });
+      } else {
+        projects = await prisma.project.findMany({
+          where: tenantFilter,
+          include: {
+            budgetCategories: true,
+            _count: { select: { expenses: true, timesheets: true } },
+          },
+        });
+      }
     }
 
     const results = await Promise.all(projects.map(async (p: any) => {
