@@ -82,7 +82,7 @@ router.get('/stats', authenticate, async (req: AuthRequest, res) => {
        },
      });
  
-     const summary = employees.map(emp => ({
+      const summary = employees.map((emp: any) => ({
        ...emp,
        activePeriod: emp.employmentPeriods.find((p: any) => p.endDate === null) ||
          emp.employmentPeriods[0] || null,
