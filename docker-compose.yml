@@ -18,7 +18,7 @@ services:
   backend:
     build: ./backend
     ports:
-      - "3001:3001"
+      - "7303:3001"
     environment:
       DATABASE_URL: postgresql://construction:construction_pass@db:5432/construction_db
       JWT_SECRET: construction_secret_key_2024
@@ -36,7 +36,7 @@ services:
     ports:
       - "7307:5173"
     environment:
-      VITE_API_URL: http://localhost:3001
+      VITE_API_URL: http://localhost:7303
     depends_on:
       - backend
     volumes:
