@@ -532,7 +532,7 @@ router.put('/:id/tasks/batch', authenticate, async (req: AuthRequest, res) => {
 });
 
 // Export schedule (round-trip)
-router.post('/:id/export', authenticate, async (req: AuthRequest, res) => {
+router.get('/:id/export', authenticate, async (req: AuthRequest, res) => {
   try {
     const session = await prisma.scheduleSession.findUnique({
       where: { id: req.params.id, tenantId: req.tenantId },
@@ -599,8 +599,15 @@ router.get('/:id/chat', authenticate, async (req: AuthRequest, res) => {
 // Rename schedule
 router.patch('/:id', authenticate, authorize('OWNER', 'MANAGER'), async (req: AuthRequest, res) => {
   try {
-    const { name } = req.body;
-    if (!name || !name.trim()) return res.status(400).json({ error: 'Name is required' });
+    const { name, comment } = req.body;
+    const updateData: any = {};
+    if (name !== undefined) {
+      if (!name.trim()) return res.status(400).json({ error: 'Name is required' });
+      updateData.name = name.trim();
+    }
+    if (comment !== undefined) {
+      updateData.comment = comment?.trim() || null;
+    }
 
     const session = await prisma.scheduleSession.findUnique({
       where: { id: req.params.id, tenantId: req.tenantId },
@@ -609,14 +616,14 @@ router.patch('/:id', authenticate, authorize('OWNER', 'MANAGER'), async (req: Au
 
     const updated = await prisma.scheduleSession.update({
       where: { id: req.params.id },
-      data: { name: name.trim() },
+      data: updateData,
     });
 
     await logAction(req.user!.id, 'UPDATE', 'ScheduleSession', updated.id);
     res.json(updated);
   } catch (e: any) {
     if (e.code === 'P2025') return res.status(404).json({ error: 'Schedule not found' });
-    res.status(500).json({ error: e.message || 'Failed to rename schedule' });
+    res.status(500).json({ error: e.message || 'Failed to update schedule' });
   }
 });
 

@@ -27,6 +27,7 @@ export interface ScheduleSession {
   parsedTasks: ScheduleTask[];
   chatMessages?: ChatMessage[];
   versions?: ScheduleVersion[];
+  comment?: string | null;
   createdAt: string;
   updatedAt: string;
 }

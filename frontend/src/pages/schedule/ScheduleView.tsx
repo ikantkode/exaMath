@@ -15,6 +15,7 @@ import {
   TabsTrigger,
 } from '@/components/ui/tabs';
 import { Badge } from '@/components/ui/badge';
+import { Input } from '@/components/ui/input';
 import {
   Table,
   BarChart3,
@@ -26,6 +27,9 @@ import {
   Trash2,
   History,
   RotateCcw,
+  Pencil,
+  Check,
+  X,
 } from 'lucide-react';
 import {
   Dialog,
@@ -37,6 +41,7 @@ import {
 } from '@/components/ui/dialog';
 import { toast } from 'sonner';
 import { formatDate } from '@/utils/api';
+import { api } from '@/utils/api';
 
 export default function ScheduleView() {
   const { user } = useAuth();
@@ -46,7 +51,9 @@ export default function ScheduleView() {
   const [activeTab, setActiveTab] = useState('list');
   const [showDeleteConfirm, setShowDeleteConfirm] = useState<string | null>(null);
   const [showVersions, setShowVersions] = useState(false);
- const [restoreVersionNumber, setRestoreVersionNumber] = useState<number | null>(null);
+  const [restoreVersionNumber, setRestoreVersionNumber] = useState<number | null>(null);
+  const [editingComment, setEditingComment] = useState<string | null>(null);
+  const [commentText, setCommentText] = useState('');
 
   useEffect(() => {
     if (activeSession) {
@@ -95,6 +102,28 @@ export default function ScheduleView() {
       toast.error(e.message);
     }
     setShowDeleteConfirm(null);
+  };
+
+  const handleStartEditComment = (session: any) => {
+    setEditingComment(session.id);
+    setCommentText(session.comment || '');
+  };
+
+  const handleCancelEditComment = () => {
+    setEditingComment(null);
+    setCommentText('');
+  };
+
+  const handleSaveComment = async (id: string) => {
+    try {
+      await api.patch(`/schedules/${id}`, { comment: commentText });
+      toast.success('Comment updated');
+      setEditingComment(null);
+      setCommentText('');
+      await useScheduleStore.getState().fetchSessions();
+    } catch (e: any) {
+      toast.error(e.message || 'Failed to update comment');
+    }
   };
 
   const handleNewUpload = () => {
@@ -147,22 +176,92 @@ export default function ScheduleView() {
 
       {/* Session selector */}
       {sessions.length > 0 && !activeSession && (
-        <div className="rounded-lg border p-4">
-          <p className="text-sm font-medium mb-2">Select a schedule to view:</p>
-          <div className="flex flex-wrap gap-2">
-            {sessions.map((s) => (
-              <Button
-                key={s.id}
-                variant={s.id === (activeSession as any)?.id ? 'default' : 'outline'}
-                onClick={() => loadSession(s.id)}
-              >
-                {s.name}
-                <span className="ml-2 text-xs text-muted-foreground">
-                  ({s.parsedTasks.length} tasks · {formatDate(s.createdAt)})
-                </span>
-              </Button>
-            ))}
-          </div>
+        <div className="rounded-lg border">
+          <table className="w-full">
+            <thead>
+              <tr className="border-b bg-muted/50">
+                <th className="text-left p-3 text-sm font-medium text-muted-foreground">Name</th>
+                <th className="text-left p-3 text-sm font-medium text-muted-foreground">Comment</th>
+                <th className="text-left p-3 text-sm font-medium text-muted-foreground">Tasks</th>
+                <th className="text-left p-3 text-sm font-medium text-muted-foreground">Created</th>
+                <th className="text-right p-3 text-sm font-medium text-muted-foreground">Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              {sessions.map((s) => (
+                <tr key={s.id} className="border-b hover:bg-muted/30">
+                  <td className="p-3">
+                    <Button
+                      variant="ghost"
+                      className="font-medium"
+                      onClick={() => loadSession(s.id)}
+                    >
+                      {s.name}
+                    </Button>
+                  </td>
+                  <td className="p-3">
+                    {editingComment === s.id ? (
+                      <div className="flex items-center gap-1">
+                        <Input
+                          value={commentText}
+                          onChange={(e) => setCommentText(e.target.value)}
+                          placeholder="Add a comment..."
+                          className="h-8 text-sm"
+                        />
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          className="h-8 w-8 p-0"
+                          onClick={() => handleSaveComment(s.id)}
+                        >
+                          <Check className="h-4 w-4" />
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          className="h-8 w-8 p-0"
+                          onClick={handleCancelEditComment}
+                        >
+                          <X className="h-4 w-4" />
+                        </Button>
+                      </div>
+                    ) : (
+                      <div className="flex items-center gap-2">
+                        <span className="text-sm">
+                          {s.comment || (
+                            <Button
+                              size="sm"
+                              variant="ghost"
+                              className="h-6 px-2 text-muted-foreground"
+                              onClick={() => handleStartEditComment(s)}
+                            >
+                              <Pencil className="h-3 w-3 mr-1" />
+                              Add comment
+                            </Button>
+                          )}
+                        </span>
+                      </div>
+                    )}
+                  </td>
+                  <td className="p-3">
+                    <span className="text-sm">{s.parsedTasks.length}</span>
+                  </td>
+                  <td className="p-3">
+                    <span className="text-sm text-muted-foreground">{formatDate(s.createdAt)}</span>
+                  </td>
+                  <td className="p-3 text-right">
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      onClick={() => loadSession(s.id)}
+                    >
+                      View
+                    </Button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
         </div>
       )}
 

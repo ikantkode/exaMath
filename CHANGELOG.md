@@ -10,6 +10,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- Schedule session comments — add, edit, and view system-only comments on schedule sessions (excluded from XML exports)
 - Multi-tenant architecture with `Tenant` and `TenantUser` models for data isolation
 - Platform admin system with `isPlatformAdmin` flag on User model
 - Platform admin routes (`/api/platform`) — tenant CRUD, member management, stats

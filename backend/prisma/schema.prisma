@@ -466,6 +466,7 @@ model ScheduleSession {
   tenantId          String
   name              String
   format            ScheduleFormat
+  comment           String?
   projectId         String?
   project           Project?         @relation(fields: [projectId], references: [id])
   originalXml       String

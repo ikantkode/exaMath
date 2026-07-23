@@ -1,14 +1,16 @@
-import { useState } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { format } from 'date-fns';
-import { ChevronDown, ChevronUp, AlertCircle, TrendingUp, BarChart3, Calendar } from 'lucide-react';
+import { ChevronDown, ChevronUp, AlertCircle, TrendingUp, BarChart3, Calendar, MessageSquare, Pencil, Check, X } from 'lucide-react';
 import { useScheduleStore, type ScheduleTask } from '@/store/scheduleStore';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Select, SelectContent, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Badge } from '@/components/ui/badge';
 import { Progress } from '@/components/ui/progress';
+import { Textarea } from '@/components/ui/textarea';
 import TaskDetail from './TaskDetail';
 import { toast } from 'sonner';
+import { api } from '@/utils/api';
 
 const statusColors: Record<string, string> = {
   NOT_STARTED: 'bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-300',
