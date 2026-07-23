@@ -28,7 +28,11 @@ export const authenticate = (req: AuthRequest, res: Response, next: NextFunction
 
     req.user = decoded;
 
-    if (decoded.tenantId) {
+    // Tenant from JWT token, header, or query parameter (header wins)
+    const headerTenant = (req.headers['x-tenant-id'] as string) || (req.query.tenantId as string);
+    if (headerTenant) {
+      req.tenantId = headerTenant;
+    } else if (decoded.tenantId) {
       req.tenantId = decoded.tenantId;
     }
 
