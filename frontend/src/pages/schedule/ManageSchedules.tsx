@@ -250,11 +250,11 @@ export default function ManageSchedules() {
                     </td>
                     <td className="p-4">
                       <DropdownMenu>
-                        <DropdownMenuTrigger asChild>
-                          <Button variant="ghost" size="icon" className="h-8 w-8">
-                            <MoreHorizontal className="h-4 w-4" />
-                          </Button>
-                        </DropdownMenuTrigger>
+                      <DropdownMenuTrigger asChild>
+                        <span className="h-8 w-8 inline-flex items-center justify-center cursor-pointer rounded-lg border border-transparent hover:bg-muted hover:text-foreground focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 active:translate-y-px disabled:pointer-events-none disabled:opacity-50" tabIndex={0}>
+                          <MoreHorizontal className="h-4 w-4" />
+                        </span>
+                      </DropdownMenuTrigger>
                         <DropdownMenuContent align="end">
                           <DropdownMenuItem onClick={() => handleView(session.id)}>
                             <Eye className="mr-2 h-4 w-4" />

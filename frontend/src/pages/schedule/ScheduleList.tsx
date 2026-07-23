@@ -4,7 +4,7 @@ import { ChevronDown, ChevronUp, AlertCircle, TrendingUp, BarChart3, Calendar, M
 import { useScheduleStore, type ScheduleTask } from '@/store/scheduleStore';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Select, SelectContent, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Badge } from '@/components/ui/badge';
 import { Progress } from '@/components/ui/progress';
 import { Textarea } from '@/components/ui/textarea';

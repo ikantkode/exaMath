@@ -2,6 +2,7 @@ import { Router } from 'express';
 import { XMLParser } from 'fast-xml-parser';
 import { create } from 'xmlbuilder2';
 import multer from 'multer';
+import axios from 'axios';
 import prisma from '../../prisma/client';
 import { authenticate, authorize, AuthRequest, withTenant } from '../middleware/auth';
 import { logAction } from '../utils/audit';
@@ -401,20 +402,252 @@ router.get('/', authenticate, withTenant, async (req: AuthRequest, res) => {
   }
 });
 
+// ─── AI Chat with Tool Calling ───────────────────────────────────────────────
+
+const VLLM_URL = process.env.VLLM_URL || 'http://192.168.1.201:7702/v1';
+const VLLM_MODEL = process.env.VLLM_MODEL || 'mellum2-thinking';
+
+async function callLLM(messages: any[], tools?: any[], forceToolChoice?: boolean): Promise<any> {
+  const payload: any = {
+    model: VLLM_MODEL,
+    messages,
+    temperature: 0.1,
+    max_tokens: 8192,
+  };
+  if (tools && tools.length > 0) {
+    payload.tools = tools;
+    payload.tool_choice = forceToolChoice ? 'required' : 'auto';
+  }
+  
+  const lastMsg = messages[messages.length - 1];
+  const fs = require('fs');
+  fs.appendFileSync('/tmp/vllm-debug.log', `[vLLM] ${new Date().toISOString()} msgs=${messages.length} tools=${tools?.length || 0} tool_choice=${payload.tool_choice} last_role=${lastMsg?.role}\n`);
+  if (lastMsg?.role === 'tool') {
+    fs.appendFileSync('/tmp/vllm-debug.log', `[vLLM] Tool result: ${(lastMsg.content || '').substring(0, 300)}\n`);
+  }
+  
+  try {
+    const res = await axios.post(`${VLLM_URL}/chat/completions`, payload);
+    const choice = res.data.choices?.[0]?.message;
+    const finishReason = res.data.choices?.[0]?.finish_reason;
+    
+    console.log('[vLLM] Response: tool_calls=', !!choice?.tool_calls, 'content=', choice?.content ? choice.content.substring(0, 100) : 'null', 'reasoning=', choice?.reasoning ? choice.reasoning.substring(0, 100) : 'null', 'finish_reason=', finishReason);
+    if (choice?.tool_calls) {
+      console.log('[vLLM] Tool calls:', JSON.stringify(choice.tool_calls.map((tc: any) => ({ name: tc.function.name, args: tc.function.arguments }))));
+    } else {
+      console.log('[vLLM] Full message keys:', Object.keys(choice || {}));
+      console.log('[vLLM] Raw choice keys:', JSON.stringify(Object.keys(choice || {})));
+      console.log('[vLLM] tool_calls raw:', JSON.stringify(choice?.tool_calls));
+      console.log('[vLLM] finish_reason raw:', JSON.stringify(finishReason));
+    }
+    
+    return res.data;
+  } catch (e: any) {
+    const errMsg = e.response?.data || e.message;
+    console.error('[vLLM] ERROR:', JSON.stringify(errMsg).substring(0, 500));
+    throw e;
+  }
+}
+
+router.post('/:id/ai-chat', authenticate, async (req: AuthRequest, res) => {
+  const fs = require('fs');
+  fs.appendFileSync('/tmp/vllm-debug.log', `[AI] ${new Date().toISOString()} tenant=${req.tenantId} id=${req.params.id} msg=${(req.body.message||'').substring(0,50)}\n`);
+  try {
+    const { message, history } = req.body;
+    const tenantId = req.tenantId!;
+    if (!message) return res.status(400).json({ error: 'Message is required' });
+
+    // Build system prompt with schedule context
+    const session = await prisma.scheduleSession.findUnique({
+      where: { id: req.params.id, tenantId: req.tenantId },
+      include: { project: { select: { name: true } } },
+    });
+    if (!session) return res.status(404).json({ error: 'Schedule not found' });
+
+    const sessionName = session.name;
+    const projectName = session.project?.name || 'unspecified project';
+
+    const systemPrompt = `You are a construction project scheduling assistant. You help users understand and analyze their Primavera P6 / MS Project schedules.
+
+Current schedule: "${sessionName}"
+Session ID: ${session.id}
+Project: ${projectName}
+Format: ${session.format}
+
+INSTRUCTIONS:
+1. Always use tools to get schedule data — never guess or make up numbers
+2. After calling a tool and receiving its result, you MUST provide a clear final answer based on that data
+3. Do NOT call tools again if you already have the information needed to answer
+4. Provide your answer in a friendly, professional tone with specific numbers from the tool results
+5. Keep answers concise — use bullet points, avoid unnecessary repetition
+6. When showing version history, provide a brief summary with version numbers and dates, not verbose descriptions`;
+
+    const messages = [
+      { role: 'system' as const, content: systemPrompt },
+      ...(history || []),
+      { role: 'user' as const, content: message },
+    ];
+
+    // Strategy: detect intent from user message, format answer server-side
+    const userMsgLower = message.toLowerCase();
+    let aiAnswer = '';
+    let iteration = 0;
+    let response: any;
+    let assistantMessage: any;
+    let finishReason: string | undefined;
+
+    if (userMsgLower.includes('version') || userMsgLower.includes('history')) {
+      const versionsRaw = await prisma.scheduleVersion.findMany({
+        where: { sessionId: session.id, session: { tenantId } },
+        select: { versionNumber: true, description: true, createdAt: true, createdBy: { select: { name: true } } },
+        orderBy: { versionNumber: 'asc' },
+      });
+      const v = versionsRaw;
+      if (v.length === 0) {
+        aiAnswer = 'There are no versions recorded for this schedule yet.';
+      } else {
+        const lines = v.map((ver) => {
+          const date = new Date(ver.createdAt).toLocaleString();
+          return `- **Version ${ver.versionNumber}**: ${date} — ${ver.createdBy?.name || 'Unknown'}${ver.description ? ` (${ver.description})` : ''}`;
+        });
+        aiAnswer = `Here is the version history for **${session.name}**:\n\n${lines.join('\n')}`;
+      }
+    } else if (userMsgLower.includes('completed') || userMsgLower.includes('done')) {
+      const tasks = await prisma.scheduleTask.findMany({
+        where: { sessionId: session.id, session: { tenantId }, status: 'COMPLETED' },
+        select: { id: true, name: true, status: true, startDate: true, isCritical: true },
+      });
+      if (tasks.length === 0) {
+        aiAnswer = 'There are no completed tasks in this schedule.';
+      } else {
+        const lines = tasks.slice(0, 20).map(t => {
+          const date = t.startDate ? new Date(t.startDate).toLocaleDateString() : 'N/A';
+          return `- **${t.name}** (Started: ${date})${t.isCritical ? ' ⚠️ Critical' : ''}`;
+        });
+        const more = tasks.length > 20 ? `\n\n*...and ${tasks.length - 20} more completed tasks.*` : '';
+        aiAnswer = `There are **${tasks.length} completed tasks** in your schedule:\n\n${lines.join('\n')}${more}`;
+      }
+    } else if (userMsgLower.includes('critical') || userMsgLower.includes('delay') || userMsgLower.includes('at risk')) {
+      const tasks = await prisma.scheduleTask.findMany({
+        where: { sessionId: session.id, session: { tenantId }, isCritical: true, status: 'IN_PROGRESS' },
+        select: { id: true, name: true, status: true, startDate: true, isCritical: true },
+      });
+      if (tasks.length === 0) {
+        aiAnswer = 'There are no critical tasks currently in progress.';
+      } else {
+        const lines = tasks.slice(0, 20).map(t => {
+          const date = t.startDate ? new Date(t.startDate).toLocaleDateString() : 'N/A';
+          return `- **${t.name}** (Started: ${date})`;
+        });
+        aiAnswer = `There are **${tasks.length} critical task(s)** in progress:\n\n${lines.join('\n')}`;
+      }
+    } else if (userMsgLower.includes('summary') || userMsgLower.includes('progress') || userMsgLower.includes('overview')) {
+      const tasks = await prisma.scheduleTask.findMany({
+        where: { sessionId: session.id, session: { tenantId } },
+        select: { id: true, name: true, status: true, startDate: true, isCritical: true },
+      });
+      const total = tasks.length;
+      const byStatus = tasks.reduce((acc: Record<string, number>, t) => {
+        acc[t.status] = (acc[t.status] || 0) + 1;
+        return acc;
+      }, {});
+      const criticalCount = tasks.filter(t => t.isCritical).length;
+      const lines = Object.entries(byStatus).sort((a, b) => b[1] - a[1]).map(([status, count]) => {
+        const pct = Math.round((count / total) * 100);
+        return `- ${status}: ${count} (${pct}%)`;
+      });
+      aiAnswer = `Here is the schedule overview for **${session.name}**:\n\n- **Total tasks**: ${total}\n- **Critical tasks**: ${criticalCount}\n\nStatus breakdown:\n${lines.join('\n')}`;
+    } else if (userMsgLower.includes('status') || userMsgLower.includes('task') || userMsgLower.includes('how many')) {
+      const tasks = await prisma.scheduleTask.findMany({
+        where: { sessionId: session.id, session: { tenantId } },
+        select: { id: true, name: true, status: true, startDate: true, isCritical: true },
+      });
+      const total = tasks.length;
+      const byStatus = tasks.reduce((acc: Record<string, number>, t) => {
+        acc[t.status] = (acc[t.status] || 0) + 1;
+        return acc;
+      }, {});
+      const lines = Object.entries(byStatus).sort((a, b) => b[1] - a[1]).map(([status, count]) => {
+        const pct = Math.round((count / total) * 100);
+        return `- ${status}: ${count} (${pct}%)`;
+      });
+      aiAnswer = `Here is the task status summary for **${session.name}**:\n\n- **Total tasks**: ${total}\n\n${lines.join('\n')}`;
+    } else {
+      // Open-ended question — use LLM with full task data as context
+      const tasks = await prisma.scheduleTask.findMany({
+        where: { sessionId: session.id, session: { tenantId } },
+        select: { id: true, name: true, status: true, startDate: true, isCritical: true },
+      });
+      messages.push({ role: 'assistant' as const, content: `Here is the task data:` });
+      messages.push({ role: 'tool' as const, tool_call_id: 'fallback', content: JSON.stringify({ tasks, total: tasks.length }) });
+      response = await callLLM(messages);
+      assistantMessage = response.choices[0].message;
+      finishReason = response.choices[0].finish_reason;
+      iteration = 1;
+      console.log('[AI] LLM fallback, iteration=', iteration, 'finishReason=', finishReason);
+    }
+
+    // For LLM fallback, extract answer from response (content or reasoning)
+    let finalContent = aiAnswer;
+    if (!aiAnswer && assistantMessage) {
+      finalContent = assistantMessage.content || assistantMessage.reasoning || 'I could not generate a response.';
+    }
+    const reasoning = assistantMessage?.reasoning || null;
+
+    // Save to chat history
+    const chat = await prisma.scheduleChat.create({
+      data: {
+        sessionId: req.params.id,
+        userId: req.user!.id,
+        message: `[AI] ${message}`,
+        tenantId: req.tenantId!,
+      },
+    });
+
+    await prisma.scheduleChat.create({
+      data: {
+        sessionId: req.params.id,
+        userId: req.user!.id,
+        message: finalContent,
+        tenantId: req.tenantId!,
+      },
+    });
+
+    res.json({
+      message: finalContent,
+      reasoning,
+      chatId: chat.id,
+      iteration,
+    });
+  } catch (e: any) {
+    console.error('AI chat error:', e);
+    if (e.code === 'P2025') return res.status(404).json({ error: 'Schedule not found' });
+    res.status(500).json({ error: e.message || 'Failed to process AI chat' });
+  }
+});
+
 // Get single session with tasks
 router.get('/:id', authenticate, async (req: AuthRequest, res) => {
   try {
+    console.log('[GET /:id] tenantId=', req.tenantId, 'params.id=', req.params.id);
     const session = await prisma.scheduleSession.findUnique({
       where: { id: req.params.id, tenantId: req.tenantId },
       include: {
         parsedTasks: true,
-        chatMessages: { include: { user: { select: { name: true } } }, orderBy: { createdAt: 'asc' } },
+        chatMessages: { orderBy: { createdAt: 'asc' } },
         versions: { include: { createdBy: { select: { name: true } } } },
       },
     });
+    console.log('[GET /:id] session found=', session ? 'yes' : 'no');
     if (!session) return res.status(404).json({ error: 'Schedule not found' });
-    res.json({ ...session, parsedTasks: session.parsedTasks || [] });
-  } catch {
+    const response = {
+      ...session,
+      parsedTasks: session.parsedTasks || [],
+      chatMessages: (session.chatMessages || []).map((m: any) => ({ ...m, userName: m.user?.name || 'Unknown' })),
+    };
+    res.json(response);
+  } catch (e) {
+    console.log('[GET /:id] ERROR:', e);
     res.status(500).json({ error: 'Failed to fetch schedule' });
   }
 });

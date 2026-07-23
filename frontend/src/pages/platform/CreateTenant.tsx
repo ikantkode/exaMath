@@ -235,7 +235,7 @@ const CreateTenant = () => {
 
             <div className="space-y-2">
               <Label htmlFor="ownerRole">Role</Label>
-              <Select value={ownerRole} onValueChange={setOwnerRole}>
+              <Select value={ownerRole} onValueChange={v => v && setOwnerRole(v)}>
                 <SelectTrigger>
                   <SelectValue />
                 </SelectTrigger>

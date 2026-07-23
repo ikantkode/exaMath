@@ -51,6 +51,14 @@ export interface ChatMessage {
   message: string;
   taskIds: string | null;
   createdAt: string;
+  isAI?: boolean;
+}
+
+export interface AIChatResponse {
+  message: string;
+  reasoning: string | null;
+  chatId: string;
+  iterations: number;
 }
 
 interface ScheduleState {
@@ -71,6 +79,7 @@ interface ScheduleState {
   updateTasksBatch: (updates: ({ id: string } & Partial<ScheduleTask>)[]) => Promise<void>;
   exportSchedule: (sessionId: string) => Promise<void>;
   sendChat: (sessionId: string, message: string, taskIds?: string[]) => Promise<void>;
+  sendAIChat: (sessionId: string, message: string, history?: any[]) => Promise<void>;
   fetchChat: (sessionId: string) => Promise<void>;
   deleteSession: (id: string) => Promise<void>;
   setSelectedTask: (id: string | null) => void;
@@ -225,6 +234,50 @@ export const useScheduleStore = create<ScheduleState>((set, get) => ({
       set((state) => ({ chatMessages: [...state.chatMessages, chat] }));
     } catch (e: any) {
       set({ error: e.message });
+      throw e;
+    }
+  },
+
+  sendAIChat: async (sessionId: string, message: string, history?: any[]) => {
+    set({ loading: true });
+    try {
+      const userMsg: ChatMessage = {
+        id: `user-${Date.now()}`,
+        sessionId,
+        userId: localStorage.getItem('userId') || '',
+        userName: localStorage.getItem('userName') || 'You',
+        message,
+        taskIds: null,
+        createdAt: new Date().toISOString(),
+        isAI: false,
+      };
+      set((state) => ({ chatMessages: [...state.chatMessages, userMsg] }));
+
+      const aiMsg: ChatMessage = {
+        id: `ai-${Date.now()}`,
+        sessionId,
+        userId: 'ai',
+        userName: 'AI Assistant',
+        message: '',
+        taskIds: null,
+        createdAt: new Date().toISOString(),
+        isAI: true,
+      };
+      set((state) => ({ chatMessages: [...state.chatMessages, aiMsg] }));
+
+      const response = await api.post<AIChatResponse>(`/schedules/${sessionId}/ai-chat`, {
+        message,
+        history: history || get().chatMessages.map((m) => ({ role: m.isAI ? 'assistant' : 'user', content: m.message })),
+      });
+
+      set((state) => ({
+        chatMessages: state.chatMessages.map((m) =>
+          m.id === aiMsg.id ? { ...m, message: response.message } : m
+        ),
+        loading: false,
+      }));
+    } catch (e: any) {
+      set({ error: e.message, loading: false });
       throw e;
     }
   },
