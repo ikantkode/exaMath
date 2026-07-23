@@ -99,7 +99,8 @@ export default function ScheduleView() {
 
   const handleNewUpload = () => {
     setSelectedTask(null);
-    navigate('/schedule/upload');
+    const projectId = window.location.pathname.split('/')[2];
+    navigate(projectId ? `/projects/${projectId}/schedule/upload` : '/schedule/upload');
   };
 
   return (

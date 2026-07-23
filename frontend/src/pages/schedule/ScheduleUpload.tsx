@@ -1,4 +1,5 @@
 import { useState, useCallback, useRef } from 'react';
+import { useParams } from 'react-router-dom';
 import { Upload, FileText, X, Check } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
@@ -12,6 +13,7 @@ interface ScheduleUploadProps {
 }
 
 export default function ScheduleUpload({ onUpload }: ScheduleUploadProps) {
+  const { projectId } = useParams<{ projectId: string }>();
   const [dragOver, setDragOver] = useState(false);
   const [file, setFile] = useState<File | null>(null);
   const [name, setName] = useState('');
@@ -44,7 +46,7 @@ export default function ScheduleUpload({ onUpload }: ScheduleUploadProps) {
     if (!file) return;
     setUploading(true);
     try {
-      await uploadSchedule(file, name || undefined);
+      await uploadSchedule(file, name || undefined, projectId);
       toast.success('Schedule uploaded successfully');
       onUpload(file.name);
     } catch (e: any) {

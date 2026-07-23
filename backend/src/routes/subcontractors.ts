@@ -3,7 +3,7 @@ import path from 'path';
 import fs from 'fs';
 import multer from 'multer';
 import prisma from '../../prisma/client';
-import { authenticate, authorize, AuthRequest, tenantFilter } from '../middleware/auth';
+import { authenticate, authorize, AuthRequest, withTenant } from '../middleware/auth';
 import { logAction } from '../utils/audit';
 
 const router = Router();
@@ -44,10 +44,11 @@ function getRelativePath(clientName: string | null | undefined, projectName: str
 
 // Agreements
 
-router.get('/', authenticate, async (req: AuthRequest, res) => {
+router.get('/', authenticate, withTenant, async (req: AuthRequest, res) => {
   try {
+    const tenantId = req.tenantId!;
     const { projectId } = req.query;
-    const where: Record<string, unknown> = { ...tenantFilter(req.tenantId) };
+    const where: Record<string, unknown> = { tenantId };
     if (projectId) where.projectId = projectId as string;
     const agreements = await prisma.subcontractorAgreement.findMany({
       where,
@@ -64,11 +65,12 @@ router.get('/', authenticate, async (req: AuthRequest, res) => {
   }
 });
 
-router.post('/', authenticate, authorize('OWNER', 'MANAGER'), async (req: AuthRequest, res) => {
+router.post('/', authenticate, withTenant, authorize('OWNER', 'MANAGER'), async (req: AuthRequest, res) => {
   try {
+    const tenantId = req.tenantId!;
     const { projectId, subcontractorName, contractValue, description } = req.body;
     if (!projectId || !subcontractorName || contractValue === undefined) return res.status(400).json({ error: 'Project, subcontractor name, and contract value are required' });
-    const project = await prisma.project.findFirst({ where: { id: projectId, ...tenantFilter(req.tenantId) } });
+    const project = await prisma.project.findFirst({ where: { id: projectId, tenantId } });
     if (!project) return res.status(404).json({ error: 'Project not found' });
     const agreement = await prisma.subcontractorAgreement.create({
       data: { projectId, subcontractorName, contractValue: parseFloat(contractValue), description: description || null, tenantId: req.tenantId! },
@@ -81,10 +83,11 @@ router.post('/', authenticate, authorize('OWNER', 'MANAGER'), async (req: AuthRe
   } catch (e: any) { res.status(500).json({ error: e.message || 'Failed to create agreement' }); }
 });
 
-router.put('/:id', authenticate, authorize('OWNER', 'MANAGER'), async (req: AuthRequest, res) => {
+router.put('/:id', authenticate, withTenant, authorize('OWNER', 'MANAGER'), async (req: AuthRequest, res) => {
   try {
+    const tenantId = req.tenantId!;
     const { id } = req.params;
-    const agreement = await prisma.subcontractorAgreement.findFirst({ where: { id, ...tenantFilter(req.tenantId) } });
+    const agreement = await prisma.subcontractorAgreement.findFirst({ where: { id, tenantId } });
     if (!agreement) return res.status(404).json({ error: 'Agreement not found' });
     if (agreement.isFinalized && req.body.contractValue !== undefined) return res.status(400).json({ error: 'Cannot modify contract value of a finalized agreement' });
     const updated = await prisma.subcontractorAgreement.update({ where: { id }, data: req.body });
@@ -93,10 +96,11 @@ router.put('/:id', authenticate, authorize('OWNER', 'MANAGER'), async (req: Auth
   } catch (e: any) { res.status(500).json({ error: e.message || 'Failed to update agreement' }); }
 });
 
-router.patch('/:id/finalize', authenticate, authorize('OWNER', 'MANAGER'), async (req: AuthRequest, res) => {
+router.patch('/:id/finalize', authenticate, withTenant, authorize('OWNER', 'MANAGER'), async (req: AuthRequest, res) => {
   try {
+    const tenantId = req.tenantId!;
     const { id } = req.params;
-    const agreement = await prisma.subcontractorAgreement.findFirst({ where: { id, ...tenantFilter(req.tenantId) } });
+    const agreement = await prisma.subcontractorAgreement.findFirst({ where: { id, tenantId } });
     if (!agreement) return res.status(404).json({ error: 'Agreement not found' });
     const updated = await prisma.subcontractorAgreement.update({ where: { id }, data: { isFinalized: true } });
     await logAction(req.user!.id, 'FINALIZE', 'SubcontractorAgreement', id);
@@ -104,10 +108,11 @@ router.patch('/:id/finalize', authenticate, authorize('OWNER', 'MANAGER'), async
   } catch (e: any) { res.status(500).json({ error: e.message || 'Failed to finalize agreement' }); }
 });
 
-router.patch('/:id/unfinalize', authenticate, authorize('OWNER'), async (req: AuthRequest, res) => {
+router.patch('/:id/unfinalize', authenticate, withTenant, authorize('OWNER'), async (req: AuthRequest, res) => {
   try {
+    const tenantId = req.tenantId!;
     const { id } = req.params;
-    const agreement = await prisma.subcontractorAgreement.findFirst({ where: { id, ...tenantFilter(req.tenantId) } });
+    const agreement = await prisma.subcontractorAgreement.findFirst({ where: { id, tenantId } });
     if (!agreement) return res.status(404).json({ error: 'Agreement not found' });
     const updated = await prisma.subcontractorAgreement.update({ where: { id }, data: { isFinalized: false } });
     await logAction(req.user!.id, 'UNFINALIZE', 'SubcontractorAgreement', id);
@@ -115,10 +120,11 @@ router.patch('/:id/unfinalize', authenticate, authorize('OWNER'), async (req: Au
   } catch (e: any) { res.status(500).json({ error: e.message || 'Failed to unfinalize agreement' }); }
 });
 
-router.delete('/:id', authenticate, authorize('OWNER'), async (req: AuthRequest, res) => {
+router.delete('/:id', authenticate, withTenant, authorize('OWNER'), async (req: AuthRequest, res) => {
   try {
+    const tenantId = req.tenantId!;
     const { id } = req.params;
-    const agreement = await prisma.subcontractorAgreement.findFirst({ where: { id, ...tenantFilter(req.tenantId) }, include: { files: true, changeOrders: { include: { files: true } }, project: { select: { clientName: true, name: true } } } });
+    const agreement = await prisma.subcontractorAgreement.findFirst({ where: { id, tenantId }, include: { files: true, changeOrders: { include: { files: true } }, project: { select: { clientName: true, name: true } } } });
     if (!agreement) return res.status(404).json({ error: 'Agreement not found' });
     for (const file of agreement.files) fs.unlinkSync(path.join(UPLOAD_DIR, file.filePath));
     for (const co of agreement.changeOrders) {
@@ -134,10 +140,11 @@ router.delete('/:id', authenticate, authorize('OWNER'), async (req: AuthRequest,
 
 // File uploads for agreements
 
-router.post('/:id/files', authenticate, authorize('OWNER', 'MANAGER'), upload.single('file'), async (req: AuthRequest, res) => {
+router.post('/:id/files', authenticate, withTenant, authorize('OWNER', 'MANAGER'), upload.single('file'), async (req: AuthRequest, res) => {
   try {
+    const tenantId = req.tenantId!;
     const { id } = req.params;
-    const agreement = await prisma.subcontractorAgreement.findFirst({ where: { id, ...tenantFilter(req.tenantId) }, include: { project: true } });
+    const agreement = await prisma.subcontractorAgreement.findFirst({ where: { id, tenantId }, include: { project: true } });
     if (!agreement) return res.status(404).json({ error: 'Agreement not found' });
     if (agreement.isFinalized) return res.status(400).json({ error: 'Cannot upload files to a finalized agreement' });
     if (!req.file) return res.status(400).json({ error: 'No file uploaded' });
@@ -159,10 +166,11 @@ router.post('/:id/files', authenticate, authorize('OWNER', 'MANAGER'), upload.si
 
 // File uploads for change orders
 
-router.post('/:agreementId/change-orders/:changeOrderId/files', authenticate, authorize('OWNER', 'MANAGER'), upload.single('file'), async (req: AuthRequest, res) => {
+router.post('/:agreementId/change-orders/:changeOrderId/files', authenticate, withTenant, authorize('OWNER', 'MANAGER'), upload.single('file'), async (req: AuthRequest, res) => {
   try {
+    const tenantId = req.tenantId!;
     const { changeOrderId } = req.params;
-    const co = await prisma.subcontractorChangeOrder.findFirst({ where: { id: changeOrderId, ...tenantFilter(req.tenantId) }, include: { agreement: { include: { project: true } } } });
+    const co = await prisma.subcontractorChangeOrder.findFirst({ where: { id: changeOrderId, tenantId }, include: { agreement: { include: { project: true } } } });
     if (!co) return res.status(404).json({ error: 'Change order not found' });
     if (!req.file) return res.status(400).json({ error: 'No file uploaded' });
     const relPath = getRelativePath(co.agreement.project?.clientName ?? null, co.agreement.project?.name);
@@ -198,11 +206,12 @@ router.delete('/files/:fileId', authenticate, authorize('OWNER', 'MANAGER'), asy
 
 // Change orders
 
-router.get('/:agreementId/change-orders', authenticate, async (req: AuthRequest, res) => {
+router.get('/:agreementId/change-orders', authenticate, withTenant, async (req: AuthRequest, res) => {
   try {
+    const tenantId = req.tenantId!;
     const { agreementId } = req.params;
     const changeOrders = await prisma.subcontractorChangeOrder.findMany({
-      where: { agreementId, ...tenantFilter(req.tenantId) },
+      where: { agreementId, tenantId },
       include: { files: true },
       orderBy: { createdAt: 'desc' },
     });
@@ -210,10 +219,11 @@ router.get('/:agreementId/change-orders', authenticate, async (req: AuthRequest,
   } catch (error) { res.status(500).json({ error: 'Failed to fetch change orders' }); }
 });
 
-router.post('/:agreementId/change-orders', authenticate, authorize('OWNER', 'MANAGER'), async (req: AuthRequest, res) => {
+router.post('/:agreementId/change-orders', authenticate, withTenant, authorize('OWNER', 'MANAGER'), async (req: AuthRequest, res) => {
   try {
+    const tenantId = req.tenantId!;
     const { agreementId } = req.params;
-    const agreement = await prisma.subcontractorAgreement.findFirst({ where: { id: agreementId, ...tenantFilter(req.tenantId) }, include: { project: { select: { clientName: true, name: true } } } });
+    const agreement = await prisma.subcontractorAgreement.findFirst({ where: { id: agreementId, tenantId }, include: { project: { select: { clientName: true, name: true } } } });
     if (!agreement) return res.status(404).json({ error: 'Agreement not found' });
     if (agreement.isFinalized) return res.status(400).json({ error: 'Cannot add change orders to a finalized agreement' });
     const { description, value } = req.body;
@@ -229,12 +239,13 @@ router.post('/:agreementId/change-orders', authenticate, authorize('OWNER', 'MAN
   } catch (e: any) { res.status(500).json({ error: e.message || 'Failed to create change order' }); }
 });
 
-router.put('/:agreementId/change-orders/:changeOrderId', authenticate, authorize('OWNER', 'MANAGER'), async (req: AuthRequest, res) => {
+router.put('/:agreementId/change-orders/:changeOrderId', authenticate, withTenant, authorize('OWNER', 'MANAGER'), async (req: AuthRequest, res) => {
   try {
+    const tenantId = req.tenantId!;
     const { changeOrderId } = req.params;
-    const co = await prisma.subcontractorChangeOrder.findFirst({ where: { id: changeOrderId, ...tenantFilter(req.tenantId) } });
+    const co = await prisma.subcontractorChangeOrder.findFirst({ where: { id: changeOrderId, tenantId } });
     if (!co) return res.status(404).json({ error: 'Change order not found' });
-    const isFinalized = await agreementIsFinalized(co.agreementId);
+    const isFinalized = await agreementIsFinalized(co.agreementId, tenantId);
     if (isFinalized) return res.status(400).json({ error: 'Cannot modify change order for a finalized agreement' });
     const updated = await prisma.subcontractorChangeOrder.update({ where: { id: changeOrderId }, data: req.body });
     await logAction(req.user!.id, 'UPDATE', 'SubcontractorChangeOrder', changeOrderId);
@@ -242,10 +253,11 @@ router.put('/:agreementId/change-orders/:changeOrderId', authenticate, authorize
   } catch (e: any) { res.status(500).json({ error: e.message || 'Failed to update change order' }); }
 });
 
-router.delete('/:agreementId/change-orders/:changeOrderId', authenticate, authorize('OWNER'), async (req: AuthRequest, res) => {
+router.delete('/:agreementId/change-orders/:changeOrderId', authenticate, withTenant, authorize('OWNER'), async (req: AuthRequest, res) => {
   try {
+    const tenantId = req.tenantId!;
     const { changeOrderId } = req.params;
-    const co = await prisma.subcontractorChangeOrder.findFirst({ where: { id: changeOrderId, ...tenantFilter(req.tenantId) }, include: { files: true, agreement: true } });
+    const co = await prisma.subcontractorChangeOrder.findFirst({ where: { id: changeOrderId, tenantId }, include: { files: true, agreement: true } });
     if (!co) return res.status(404).json({ error: 'Change order not found' });
     for (const file of co.files) fs.unlinkSync(path.join(UPLOAD_DIR, file.filePath));
     await prisma.subcontractorChangeOrder.delete({ where: { id: changeOrderId } });
@@ -254,8 +266,8 @@ router.delete('/:agreementId/change-orders/:changeOrderId', authenticate, author
   } catch (e: any) { res.status(500).json({ error: e.message || 'Failed to delete change order' }); }
 });
 
-async function agreementIsFinalized(agreementId: string) {
-  const agreement = await prisma.subcontractorAgreement.findUnique({ where: { id: agreementId } });
+async function agreementIsFinalized(agreementId: string, tenantId: string) {
+  const agreement = await prisma.subcontractorAgreement.findUnique({ where: { id: agreementId, tenantId } });
   return agreement?.isFinalized ?? false;
 }
 

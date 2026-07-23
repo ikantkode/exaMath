@@ -1,17 +1,15 @@
 import { Router } from 'express';
 import prisma from '../../prisma/client';
-import { authenticate, authorize, AuthRequest } from '../middleware/auth';
-import { getTenantId } from '../utils/tenant';
+import { authenticate, authorize, AuthRequest, withTenant } from '../middleware/auth';
 
 const router = Router();
 
-router.get('/', authenticate, authorize('OWNER'), async (req: AuthRequest, res) => {
+router.get('/', authenticate, withTenant, authorize('OWNER'), async (req: AuthRequest, res) => {
   try {
-    const tenantId = getTenantId(req);
-    const tenantFilter = tenantId ? { tenantId } : {};
+    const tenantId = req.tenantId!;
     
     const logs = await prisma.auditLog.findMany({
-      where: tenantFilter,
+      where: { tenantId },
       include: { user: { select: { id: true, name: true, email: true, role: true } } },
       orderBy: { timestamp: 'desc' },
       take: 500,

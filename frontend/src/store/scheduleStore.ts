@@ -61,7 +61,7 @@ interface ScheduleState {
   selectedTaskId: string | null;
 
   // Actions
-  fetchSessions: () => Promise<void>;
+  fetchSessions: (projectId?: string) => Promise<void>;
   loadSession: (id: string) => Promise<void>;
   uploadSchedule: (file: File, name?: string, projectId?: string) => Promise<void>;
   renameSession: (id: string, name: string) => Promise<void>;
@@ -87,10 +87,11 @@ export const useScheduleStore = create<ScheduleState>((set, get) => ({
   error: null,
   selectedTaskId: null,
 
-  fetchSessions: async () => {
+  fetchSessions: async (projectId?: string) => {
     set({ loading: true, error: null });
     try {
-      const sessions = await api.get<ScheduleSession[]>('/schedules');
+      const url = projectId ? `/schedules?projectId=${projectId}` : '/schedules';
+      const sessions = await api.get<ScheduleSession[]>(url);
       const normalized = sessions.map((s) => ({ ...s, parsedTasks: s.parsedTasks || [] }));
       set({ sessions: normalized, loading: false });
     } catch (e: any) {

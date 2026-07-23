@@ -1,18 +1,16 @@
 import { Router } from 'express';
 import prisma from '../../prisma/client';
-import { authenticate, authorize, AuthRequest } from '../middleware/auth';
+import { authenticate, authorize, AuthRequest, withTenant } from '../middleware/auth';
 import { logAction } from '../utils/audit';
-import { getTenantId } from '../utils/tenant';
 
 const router = Router();
 
-router.get('/', authenticate, authorize('OWNER', 'MANAGER'), async (req: AuthRequest, res) => {
+router.get('/', authenticate, withTenant, authorize('OWNER', 'MANAGER'), async (req: AuthRequest, res) => {
   try {
-    const tenantId = getTenantId(req);
-    const tenantFilter = tenantId ? { tenantId } : {};
+    const tenantId = req.tenantId!;
     
     const payouts = await prisma.payout.findMany({
-      where: tenantFilter,
+      where: { tenantId },
       orderBy: { date: 'desc' },
     });
     res.json(payouts);
@@ -21,9 +19,9 @@ router.get('/', authenticate, authorize('OWNER', 'MANAGER'), async (req: AuthReq
   }
 });
 
-router.post('/', authenticate, authorize('OWNER'), async (req: AuthRequest, res) => {
+router.post('/', authenticate, withTenant, authorize('OWNER'), async (req: AuthRequest, res) => {
   try {
-    const tenantId = getTenantId(req);
+    const tenantId = req.tenantId!;
     const { type, amount, currency, conversionRate, amountUSD, recipient, description, date } = req.body;
     if (!type || amount === undefined || !recipient || !date) {
       return res.status(400).json({ error: 'Type, amount, recipient, and date are required' });
@@ -49,12 +47,11 @@ router.post('/', authenticate, authorize('OWNER'), async (req: AuthRequest, res)
   }
 });
 
-router.put('/:id', authenticate, authorize('OWNER'), async (req: AuthRequest, res) => {
+router.put('/:id', authenticate, withTenant, authorize('OWNER'), async (req: AuthRequest, res) => {
   try {
-    const tenantId = getTenantId(req);
-    const tenantFilter = tenantId ? { tenantId } : {};
+    const tenantId = req.tenantId!;
     
-    const old = await prisma.payout.findUnique({ where: { id: req.params.id, ...tenantFilter } });
+    const old = await prisma.payout.findUnique({ where: { id: req.params.id, tenantId } });
     if (!old) return res.status(404).json({ error: 'Payout not found' });
     
     const payout = await prisma.payout.update({
@@ -68,12 +65,11 @@ router.put('/:id', authenticate, authorize('OWNER'), async (req: AuthRequest, re
   }
 });
 
-router.delete('/:id', authenticate, authorize('OWNER'), async (req: AuthRequest, res) => {
+router.delete('/:id', authenticate, withTenant, authorize('OWNER'), async (req: AuthRequest, res) => {
   try {
-    const tenantId = getTenantId(req);
-    const tenantFilter = tenantId ? { tenantId } : {};
+    const tenantId = req.tenantId!;
     
-    const payout = await prisma.payout.findUnique({ where: { id: req.params.id, ...tenantFilter } });
+    const payout = await prisma.payout.findUnique({ where: { id: req.params.id, tenantId } });
     if (!payout) return res.status(404).json({ error: 'Payout not found' });
     
     await prisma.payout.delete({ where: { id: req.params.id } });

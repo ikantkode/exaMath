@@ -380,6 +380,19 @@ const ProjectDetail = () => {
                 </CardContent>
               </Card>
             </Link>
+            <Link to={`/projects/${id}/schedule`} className="block">
+              <Card className="h-full transition-shadow hover:shadow-md">
+                <CardHeader className="pb-3">
+                  <CardTitle className="text-base">Schedule</CardTitle>
+                  <CardDescription>Manage project schedules</CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <div className="flex items-center gap-1 text-sm font-medium text-primary">
+                    Manage Schedule <ArrowLeft className="h-4 w-4 rotate-180" />
+                  </div>
+                </CardContent>
+              </Card>
+            </Link>
           </div>
         </>
       )}

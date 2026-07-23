@@ -1,20 +1,18 @@
 import { Router } from 'express';
 import prisma from '../../prisma/client';
-import { authenticate, authorize, AuthRequest } from '../middleware/auth';
+import { authenticate, authorize, AuthRequest, withTenant } from '../middleware/auth';
 import { logAction } from '../utils/audit';
-import { getTenantId } from '../utils/tenant';
 
 const router = Router();
 
-router.get('/', authenticate, async (req: AuthRequest, res) => {
+router.get('/', authenticate, withTenant, async (req: AuthRequest, res) => {
   try {
-    const tenantId = getTenantId(req);
-    const tenantFilter = tenantId ? { tenantId } : {};
+    const tenantId = req.tenantId!;
     
-    let projects;
-    if (req.user!.role === 'OWNER') {
+    let projects: any[];
+    if (req.user!.tenantRole === 'OWNER' || req.user!.tenantRole === 'MANAGER') {
       projects = await prisma.project.findMany({
-        where: tenantFilter,
+        where: { tenantId },
         include: {
           budgetCategories: true,
           _count: { select: { expenses: true, timesheets: true } },
@@ -27,7 +25,7 @@ router.get('/', authenticate, async (req: AuthRequest, res) => {
         projects = await prisma.project.findMany({
           where: { 
             id: { in: projectIds },
-            ...tenantFilter 
+            tenantId,
           },
           include: {
             budgetCategories: true,
@@ -35,24 +33,18 @@ router.get('/', authenticate, async (req: AuthRequest, res) => {
           },
         });
       } else {
-        projects = await prisma.project.findMany({
-          where: tenantFilter,
-          include: {
-            budgetCategories: true,
-            _count: { select: { expenses: true, timesheets: true } },
-          },
-        });
+        projects = [];
       }
     }
 
     const results = await Promise.all(projects.map(async (p: any) => {
        const totalExpenses = await prisma.expense.aggregate({
-         where: { projectId: p.id, ...tenantFilter },
+         where: { projectId: p.id, tenantId },
          _sum: { amountUSD: true },
        });
 
       const totalLabor = await prisma.timesheet.aggregate({
-        where: { projectId: p.id, ...tenantFilter },
+        where: { projectId: p.id, tenantId },
         _sum: { hours: true },
       });
       return {
@@ -70,15 +62,14 @@ router.get('/', authenticate, async (req: AuthRequest, res) => {
   }
 });
 
-router.get('/:id', authenticate, async (req: AuthRequest, res) => {
+router.get('/:id', authenticate, withTenant, async (req: AuthRequest, res) => {
   try {
-    const tenantId = getTenantId(req);
-    const tenantFilter = tenantId ? { tenantId } : {};
+    const tenantId = req.tenantId!;
     
     const project = await prisma.project.findUnique({
       where: { 
         id: req.params.id,
-        ...tenantFilter
+        tenantId,
       },
       include: {
         budgetCategories: { include: { expenses: true } },
@@ -104,33 +95,36 @@ router.get('/:id', authenticate, async (req: AuthRequest, res) => {
   }
 });
 
-router.post('/', authenticate, authorize('OWNER', 'MANAGER'), async (req: AuthRequest, res) => {
+router.post('/', authenticate, withTenant, authorize('OWNER', 'MANAGER'), async (req: AuthRequest, res) => {
   try {
-    const tenantId = getTenantId(req);
+    const tenantId = req.tenantId!;
     const project = await prisma.project.create({
       data: {
         ...req.body,
-        tenantId: tenantId || req.body.tenantId,
+        tenantId,
+        originalContract: req.body.originalContract ?? 0,
+        totalChangeOrders: req.body.totalChangeOrders ?? 0,
+        estimatedCompletion: req.body.estimatedCompletion ?? 0,
       },
     });
     await logAction(req.user!.id, 'CREATE', 'Project', project.id, null, JSON.stringify(req.body));
     res.status(201).json(project);
-  } catch (error) {
-    res.status(500).json({ error: 'Failed to create project' });
+  } catch (error: any) {
+    console.error('Create project error:', error);
+    res.status(500).json({ error: 'Failed to create project', detail: error.message });
   }
 });
 
-router.put('/:id', authenticate, authorize('OWNER', 'MANAGER'), async (req: AuthRequest, res) => {
+router.put('/:id', authenticate, withTenant, authorize('OWNER', 'MANAGER'), async (req: AuthRequest, res) => {
   try {
-    const tenantId = getTenantId(req);
-    const tenantFilter = tenantId ? { tenantId } : {};
+    const tenantId = req.tenantId!;
     
-    const old = await prisma.project.findUnique({ where: { id: req.params.id, ...tenantFilter } });
+    const old = await prisma.project.findUnique({ where: { id: req.params.id, tenantId } });
     if (!old) return res.status(404).json({ error: 'Project not found' });
     
     const project = await prisma.project.update({
       where: { id: req.params.id },
-      data: { ...req.body, tenantId: tenantId || req.body.tenantId },
+      data: { ...req.body, tenantId },
     });
     await logAction(req.user!.id, 'UPDATE', 'Project', req.params.id, JSON.stringify(old), JSON.stringify(req.body));
     res.json(project);
@@ -139,12 +133,11 @@ router.put('/:id', authenticate, authorize('OWNER', 'MANAGER'), async (req: Auth
   }
 });
 
-router.delete('/:id', authenticate, authorize('OWNER'), async (req: AuthRequest, res) => {
+router.delete('/:id', authenticate, withTenant, authorize('OWNER'), async (req: AuthRequest, res) => {
   try {
-    const tenantId = getTenantId(req);
-    const tenantFilter = tenantId ? { tenantId } : {};
+    const tenantId = req.tenantId!;
     
-    const project = await prisma.project.findUnique({ where: { id: req.params.id, ...tenantFilter } });
+    const project = await prisma.project.findUnique({ where: { id: req.params.id, tenantId } });
     if (!project) return res.status(404).json({ error: 'Project not found' });
     
     await prisma.project.delete({ where: { id: req.params.id } });

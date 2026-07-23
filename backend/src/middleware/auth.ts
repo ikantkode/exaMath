@@ -1,5 +1,6 @@
 import { Request, Response, NextFunction } from 'express';
 import jwt from 'jsonwebtoken';
+import prisma from '../../prisma/client';
 import { JWT_SECRET } from '../index';
 
 export interface AuthUser {
@@ -8,6 +9,7 @@ export interface AuthUser {
   email: string;
   tenantId?: string;
   tenantRole?: string;
+  isPlatformAdmin?: boolean;
 }
 
 export interface AuthRequest extends Request {
@@ -24,10 +26,8 @@ export const authenticate = (req: AuthRequest, res: Response, next: NextFunction
 
     const decoded = jwt.verify(token, JWT_SECRET) as AuthUser;
 
-    // Attach full user info
     req.user = decoded;
 
-    // If tenantId is in the token, use it; otherwise resolve from TenantUser
     if (decoded.tenantId) {
       req.tenantId = decoded.tenantId;
     }
@@ -44,7 +44,8 @@ export const authorize = (...roles: string[]) => {
       return res.status(401).json({ error: 'Authentication required' });
     }
 
-    if (!roles.includes(req.user.role)) {
+    const effectiveRole = req.user.tenantRole || req.user.role;
+    if (!roles.includes(effectiveRole)) {
       return res.status(403).json({ error: 'Insufficient permissions' });
     }
 
@@ -52,20 +53,34 @@ export const authorize = (...roles: string[]) => {
   };
 };
 
-// Tenant-aware middleware: ensures all queries are scoped to the user's tenant
-export const withTenant = (req: AuthRequest, res: Response, next: NextFunction) => {
+export const withTenant = async (req: AuthRequest, res: Response, next: NextFunction) => {
   if (!req.user) {
     return res.status(401).json({ error: 'Authentication required' });
   }
 
   // Tenant can be passed explicitly via query/header, or resolved from token
-  req.tenantId = req.query.tenantId as string || req.headers['x-tenant-id'] as string || req.tenantId;
+  const requestedTenantId = (req.query.tenantId as string) || (req.headers['x-tenant-id'] as string);
+  req.tenantId = requestedTenantId || req.tenantId;
 
   if (!req.tenantId) {
-    // Resolve tenant from TenantUser table — for now, user's first tenant
-    // In the future, this could be a multi-tenant switcher
     return res.status(400).json({ error: 'Tenant context required. Provide tenantId in request.' });
   }
+
+  // Verify the user is a member of the requested tenant
+  const tenantUser = await prisma.tenantUser.findFirst({
+    where: {
+      userId: req.user.id,
+      tenantId: req.tenantId,
+    },
+  });
+
+  if (!tenantUser) {
+    return res.status(403).json({ error: 'Access denied to this tenant' });
+  }
+
+  // Set the tenant role from TenantUser for authorization
+  req.user.tenantId = req.tenantId;
+  req.user.tenantRole = tenantUser.role;
 
   next();
 };

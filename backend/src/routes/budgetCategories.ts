@@ -1,27 +1,25 @@
 import { Router } from 'express';
 import prisma from '../../prisma/client';
-import { authenticate, authorize, AuthRequest } from '../middleware/auth';
+import { authenticate, authorize, AuthRequest, withTenant } from '../middleware/auth';
 import { logAction } from '../utils/audit';
-import { getTenantId } from '../utils/tenant';
 
 const router = Router();
 
-router.get('/', authenticate, async (req: AuthRequest, res) => {
+router.get('/', authenticate, withTenant, async (req: AuthRequest, res) => {
   try {
-    const tenantId = getTenantId(req);
-    const tenantFilter = tenantId ? { tenantId } : {};
+    const tenantId = req.tenantId!;
     
     const categories = await prisma.budgetCategory.findMany({
-      where: tenantFilter,
+      where: { tenantId },
       include: { project: true },
     });
     res.json(categories);
   } catch (e) { res.status(500).json({ error: 'Failed to fetch budget categories' }); }
 });
 
-router.post('/', authenticate, authorize('OWNER', 'MANAGER'), async (req: AuthRequest, res) => {
+router.post('/', authenticate, withTenant, authorize('OWNER', 'MANAGER'), async (req: AuthRequest, res) => {
   try {
-    const tenantId = getTenantId(req);
+    const tenantId = req.tenantId!;
     const { name, budget, projectId } = req.body;
     const category = await prisma.budgetCategory.create({
       data: { name, budget, projectId, tenantId: tenantId || req.body.tenantId },
@@ -33,12 +31,11 @@ router.post('/', authenticate, authorize('OWNER', 'MANAGER'), async (req: AuthRe
   }
 });
 
-router.put('/:id', authenticate, authorize('OWNER', 'MANAGER'), async (req: AuthRequest, res) => {
+router.put('/:id', authenticate, withTenant, authorize('OWNER', 'MANAGER'), async (req: AuthRequest, res) => {
   try {
-    const tenantId = getTenantId(req);
-    const tenantFilter = tenantId ? { tenantId } : {};
+    const tenantId = req.tenantId!;
     
-    const old = await prisma.budgetCategory.findUnique({ where: { id: req.params.id, ...tenantFilter } });
+    const old = await prisma.budgetCategory.findUnique({ where: { id: req.params.id, tenantId } });
     if (!old) return res.status(404).json({ error: 'Budget category not found' });
     
     const category = await prisma.budgetCategory.update({
@@ -52,12 +49,11 @@ router.put('/:id', authenticate, authorize('OWNER', 'MANAGER'), async (req: Auth
   }
 });
 
-router.delete('/:id', authenticate, authorize('OWNER'), async (req: AuthRequest, res) => {
+router.delete('/:id', authenticate, withTenant, authorize('OWNER'), async (req: AuthRequest, res) => {
   try {
-    const tenantId = getTenantId(req);
-    const tenantFilter = tenantId ? { tenantId } : {};
+    const tenantId = req.tenantId!;
     
-    const category = await prisma.budgetCategory.findUnique({ where: { id: req.params.id, ...tenantFilter } });
+    const category = await prisma.budgetCategory.findUnique({ where: { id: req.params.id, tenantId } });
     if (!category) return res.status(404).json({ error: 'Budget category not found' });
     
     await prisma.budgetCategory.delete({ where: { id: req.params.id } });

@@ -21,6 +21,7 @@ import employeeRoutes from './routes/employees';
 import fieldWorkerRoutes from './routes/fieldWorkers';
 import subcontractorRoutes from './routes/subcontractors';
 import scheduleRoutes from './routes/schedules';
+import platformRoutes from './routes/platform';
 
 dotenv.config();
 
@@ -56,7 +57,8 @@ app.use('/api/field-workers', fieldWorkerRoutes);
 app.use('/api/subcontractors', subcontractorRoutes);
 app.use('/api/schedules', scheduleRoutes);
 app.use('/api/recurring-expenses', recurringExpenseRoutes);
-app.use('/api/recurring-expenses', recurringExpenseRoutes);
+
+app.use('/api/platform', platformRoutes);
 
 app.get('/api/health', (_req, res) => {
   res.json({ status: 'ok', timestamp: new Date().toISOString() });

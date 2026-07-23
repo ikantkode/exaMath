@@ -1,18 +1,16 @@
 import { Router } from 'express';
 import prisma from '../../prisma/client';
-import { authenticate, authorize, AuthRequest } from '../middleware/auth';
+import { authenticate, authorize, AuthRequest, withTenant } from '../middleware/auth';
 import { logAction } from '../utils/audit';
-import { getTenantId } from '../utils/tenant';
 
 const router = Router();
 
-router.get('/', authenticate, authorize('OWNER', 'MANAGER'), async (req: AuthRequest, res) => {
+router.get('/', authenticate, withTenant, authorize('OWNER', 'MANAGER'), async (req: AuthRequest, res) => {
   try {
-    const tenantId = getTenantId(req);
-    const tenantFilter = tenantId ? { tenantId } : {};
+    const tenantId = req.tenantId!;
     
     const assets = await prisma.fixedAsset.findMany({
-      where: tenantFilter,
+      where: { tenantId },
       orderBy: { purchaseDate: 'desc' },
     });
     res.json(assets);
@@ -21,9 +19,9 @@ router.get('/', authenticate, authorize('OWNER', 'MANAGER'), async (req: AuthReq
   }
 });
 
-router.post('/', authenticate, authorize('OWNER'), async (req: AuthRequest, res) => {
+router.post('/', authenticate, withTenant, authorize('OWNER'), async (req: AuthRequest, res) => {
   try {
-    const tenantId = getTenantId(req);
+    const tenantId = req.tenantId!;
     const { name, category, purchasePrice, purchaseDate, usefulLife } = req.body;
     const currentValue = purchasePrice;
     const asset = await prisma.fixedAsset.create({
@@ -36,12 +34,11 @@ router.post('/', authenticate, authorize('OWNER'), async (req: AuthRequest, res)
   }
 });
 
-router.post('/recalculate', authenticate, authorize('OWNER'), async (req: AuthRequest, res) => {
+router.post('/recalculate', authenticate, withTenant, authorize('OWNER'), async (req: AuthRequest, res) => {
   try {
-    const tenantId = getTenantId(req);
-    const tenantFilter = tenantId ? { tenantId } : {};
+    const tenantId = req.tenantId!;
     
-    const assets = await prisma.fixedAsset.findMany({ where: tenantFilter });
+    const assets = await prisma.fixedAsset.findMany({ where: { tenantId } });
     const now = new Date();
     const updates = assets.map(async (asset: any) => {
       const purchaseDate = new Date(asset.purchaseDate);
@@ -56,19 +53,18 @@ router.post('/recalculate', authenticate, authorize('OWNER'), async (req: AuthRe
     });
     await Promise.all(updates);
     await logAction(req.user!.id, 'RECALCULATE', 'FixedAsset', null, null, 'Depreciation recalculated');
-    const updated = await prisma.fixedAsset.findMany({ where: tenantFilter });
+    const updated = await prisma.fixedAsset.findMany({ where: { tenantId } });
     res.json(updated);
   } catch (error) {
     res.status(500).json({ error: 'Failed to recalculate depreciation' });
   }
 });
 
-router.put('/:id', authenticate, authorize('OWNER'), async (req: AuthRequest, res) => {
+router.put('/:id', authenticate, withTenant, authorize('OWNER'), async (req: AuthRequest, res) => {
   try {
-    const tenantId = getTenantId(req);
-    const tenantFilter = tenantId ? { tenantId } : {};
+    const tenantId = req.tenantId!;
     
-    const old = await prisma.fixedAsset.findUnique({ where: { id: req.params.id, ...tenantFilter } });
+    const old = await prisma.fixedAsset.findUnique({ where: { id: req.params.id, tenantId } });
     if (!old) return res.status(404).json({ error: 'Fixed asset not found' });
     
     const asset = await prisma.fixedAsset.update({
@@ -82,12 +78,11 @@ router.put('/:id', authenticate, authorize('OWNER'), async (req: AuthRequest, re
   }
 });
 
-router.delete('/:id', authenticate, authorize('OWNER'), async (req: AuthRequest, res) => {
+router.delete('/:id', authenticate, withTenant, authorize('OWNER'), async (req: AuthRequest, res) => {
   try {
-    const tenantId = getTenantId(req);
-    const tenantFilter = tenantId ? { tenantId } : {};
+    const tenantId = req.tenantId!;
     
-    const asset = await prisma.fixedAsset.findUnique({ where: { id: req.params.id, ...tenantFilter } });
+    const asset = await prisma.fixedAsset.findUnique({ where: { id: req.params.id, tenantId } });
     if (!asset) return res.status(404).json({ error: 'Fixed asset not found' });
     
     await prisma.fixedAsset.delete({ where: { id: req.params.id } });

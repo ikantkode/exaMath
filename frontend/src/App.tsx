@@ -22,6 +22,10 @@ import FieldWorkers from './pages/fieldWorkers/FieldWorkers';
 import ScheduleView from './pages/schedule/ScheduleView';
 import ScheduleUpload from './pages/schedule/ScheduleUpload';
 import ManageSchedules from './pages/schedule/ManageSchedules';
+import PlatformDashboard from './pages/platform/PlatformDashboard';
+import TenantList from './pages/platform/TenantList';
+import TenantMembers from './pages/platform/TenantMembers';
+import CreateTenant from './pages/platform/CreateTenant';
 import { Toaster } from './components/ui/toast';
 
 const ProtectedRoute = ({ children, roles }: { children: React.ReactNode; roles?: string[] }) => {
@@ -89,9 +93,41 @@ const AppRoutes = () => (
              </ProtectedRoute>
            }
          />
-         <Route path="schedule" element={<ManageSchedules />} />
-           <Route path="schedule/upload" element={<ScheduleUpload onUpload={() => {}} />} />
-     </Route>
+           <Route path="projects/:projectId/schedule" element={<ManageSchedules />} />
+             <Route path="projects/:projectId/schedule/upload" element={<ScheduleUpload onUpload={() => {}} />} />
+          <Route
+            path="platform"
+            element={
+              <ProtectedRoute>
+                <PlatformDashboard />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="platform/tenants"
+            element={
+              <ProtectedRoute>
+                <TenantList />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="platform/tenants/:id"
+            element={
+              <ProtectedRoute>
+                <TenantMembers />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="platform/tenants/create"
+            element={
+              <ProtectedRoute>
+                <CreateTenant />
+              </ProtectedRoute>
+            }
+          />
+      </Route>
     <Route path="*" element={<Navigate to="/login" replace />} />
   </Routes>
 );

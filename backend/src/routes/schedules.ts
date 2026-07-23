@@ -3,7 +3,7 @@ import { XMLParser } from 'fast-xml-parser';
 import { create } from 'xmlbuilder2';
 import multer from 'multer';
 import prisma from '../../prisma/client';
-import { authenticate, authorize, AuthRequest, tenantFilter } from '../middleware/auth';
+import { authenticate, authorize, AuthRequest, withTenant } from '../middleware/auth';
 import { logAction } from '../utils/audit';
 
 const router = Router();
@@ -385,10 +385,12 @@ router.post('/upload', upload.single('file'), authenticate, authorize('OWNER', '
 });
 
 // List sessions
-router.get('/', authenticate, async (req: AuthRequest, res) => {
+router.get('/', authenticate, withTenant, async (req: AuthRequest, res) => {
   try {
+    const tenantId = req.tenantId!;
+    const projectId = req.query.projectId as string | undefined;
     const sessions = await prisma.scheduleSession.findMany({
-      where: tenantFilter(req.tenantId),
+      where: projectId ? { tenantId, projectId } : { tenantId },
       include: { parsedTasks: { orderBy: { activityId: 'asc' } } },
       orderBy: { createdAt: 'desc' },
     });

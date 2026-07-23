@@ -1,4 +1,4 @@
-import { Router } from 'express';
+import { Router, Response, NextFunction } from 'express';
 import bcrypt from 'bcrypt';
 import prisma from '../../prisma/client';
 import { authenticate, authorize, AuthRequest } from '../middleware/auth';
@@ -6,8 +6,19 @@ import { logAction } from '../utils/audit';
 
 const router = Router();
 
-// List all users (OWNER, MANAGER)
-router.get('/', authenticate, authorize('OWNER', 'MANAGER'), async (_req: AuthRequest, res) => {
+// Platform admin or OWNER check
+const platformAdminOrOwner = () => (req: AuthRequest, res: Response, next: NextFunction) => {
+  if (!req.user) {
+    return res.status(401).json({ error: 'Authentication required' });
+  }
+  if (req.user.isPlatformAdmin || req.user.role === 'OWNER') {
+    return next();
+  }
+  return res.status(403).json({ error: 'Insufficient permissions' });
+};
+
+// List all users (platform admin, OWNER, MANAGER)
+router.get('/', authenticate, authorize('OWNER', 'MANAGER'), async (_req: AuthRequest, res: Response) => {
   try {
     const users = await prisma.user.findMany({
       select: {
@@ -15,6 +26,7 @@ router.get('/', authenticate, authorize('OWNER', 'MANAGER'), async (_req: AuthRe
         name: true,
         email: true,
         role: true,
+        isPlatformAdmin: true,
         assignedProjectIds: true,
         createdAt: true,
         updatedAt: true,
@@ -52,6 +64,7 @@ router.post('/', authenticate, authorize('OWNER', 'MANAGER'), async (req: AuthRe
         name: true,
         email: true,
         role: true,
+        isPlatformAdmin: true,
         assignedProjectIds: true,
         createdAt: true,
         updatedAt: true,
@@ -66,11 +79,11 @@ router.post('/', authenticate, authorize('OWNER', 'MANAGER'), async (req: AuthRe
   }
 });
 
-// Update user role (OWNER only)
-router.put('/:id', authenticate, authorize('OWNER'), async (req: AuthRequest, res) => {
+// Update user role (OWNER, platform admin only)
+router.put('/:id', authenticate, platformAdminOrOwner(), async (req: AuthRequest, res) => {
   try {
     const { id } = req.params;
-    const { role, assignedProjectIds } = req.body;
+    const { role, assignedProjectIds, isPlatformAdmin } = req.body;
 
     const user = await prisma.user.findUnique({ where: { id } });
     if (!user) {
@@ -80,6 +93,7 @@ router.put('/:id', authenticate, authorize('OWNER'), async (req: AuthRequest, re
     const data: any = {};
     if (role) data.role = role;
     if (assignedProjectIds) data.assignedProjectIds = assignedProjectIds;
+    if (typeof isPlatformAdmin === 'boolean') data.isPlatformAdmin = isPlatformAdmin;
 
     const updated = await prisma.user.update({
       where: { id },
@@ -89,13 +103,14 @@ router.put('/:id', authenticate, authorize('OWNER'), async (req: AuthRequest, re
         name: true,
         email: true,
         role: true,
+        isPlatformAdmin: true,
         assignedProjectIds: true,
         createdAt: true,
         updatedAt: true,
       },
     });
 
-    await logAction(req.user!.id, 'UPDATE', 'User', id, JSON.stringify({ role: user.role, assignedProjectIds: user.assignedProjectIds }), JSON.stringify(data));
+    await logAction(req.user!.id, 'UPDATE', 'User', id, JSON.stringify({ role: user.role, isPlatformAdmin: user.isPlatformAdmin, assignedProjectIds: user.assignedProjectIds }), JSON.stringify(data));
 
     res.json(updated);
   } catch {

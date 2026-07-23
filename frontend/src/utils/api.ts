@@ -114,3 +114,81 @@ export const formatDate = (date: string | Date) =>
   new Date(date).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' });
 
 export const canAccess = (userRole: string, allowedRoles: string[]) => allowedRoles.includes(userRole);
+
+// Platform API — no tenant header required
+function getPlatformHeaders(): Record<string, string> {
+  const token = localStorage.getItem('token');
+  const headers: Record<string, string> = {};
+  if (token) headers.Authorization = `Bearer ${token}`;
+  return headers;
+}
+
+export interface TenantWithUserResult {
+  tenant: { id: string; name: string; slug: string; schemaName: string; isActive: boolean; createdAt: string };
+  user: { id: string; name: string; email: string; role: string };
+  credentials: { email: string; password: string };
+}
+
+export const platformApi = {
+  get: async <T>(url: string): Promise<T> => {
+    const res = await fetch(`${API_URL}${url}`, {
+      headers: { 'Content-Type': 'application/json', ...getPlatformHeaders() },
+    });
+    if (!res.ok) {
+      const error = await res.json().catch(() => ({ error: 'Request failed' }));
+      throw new Error(error.error || 'Request failed');
+    }
+    return res.json();
+  },
+
+  postTenantWithUser: async (companyName: string, ownerName: string, ownerEmail: string, ownerRole?: string): Promise<TenantWithUserResult> => {
+    const res = await fetch(`${API_URL}/platform/tenants-with-user`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', ...getPlatformHeaders() },
+      body: JSON.stringify({ companyName, ownerName, ownerEmail, ownerRole }),
+    });
+    if (!res.ok) {
+      const error = await res.json().catch(() => ({ error: 'Request failed' }));
+      throw new Error(error.error || 'Request failed');
+    }
+    return res.json();
+  },
+
+  post: async <T>(url: string, body: any): Promise<T> => {
+    const res = await fetch(`${API_URL}${url}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', ...getPlatformHeaders() },
+      body: JSON.stringify(body),
+    });
+    if (!res.ok) {
+      const error = await res.json().catch(() => ({ error: 'Request failed' }));
+      throw new Error(error.error || 'Request failed');
+    }
+    return res.json();
+  },
+
+  patch: async <T>(url: string, body?: any): Promise<T> => {
+    const res = await fetch(`${API_URL}${url}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json', ...getPlatformHeaders() },
+      body: body ? JSON.stringify(body) : undefined,
+    });
+    if (!res.ok) {
+      const error = await res.json().catch(() => ({ error: 'Request failed' }));
+      throw new Error(error.error || 'Request failed');
+    }
+    return res.json();
+  },
+
+  delete: async <T>(url: string): Promise<T> => {
+    const res = await fetch(`${API_URL}${url}`, {
+      method: 'DELETE',
+      headers: { ...getPlatformHeaders() },
+    });
+    if (!res.ok) {
+      const error = await res.json().catch(() => ({ error: 'Request failed' }));
+      throw new Error(error.error || 'Request failed');
+    }
+    return res.json();
+  },
+};

@@ -13,6 +13,7 @@ interface User {
   name: string;
   email: string;
   role: string;
+  isPlatformAdmin?: boolean;
   assignedProjectIds?: string[];
   tenantId?: string;
   tenantRole?: string;
@@ -52,6 +53,9 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const login = async (email: string, password: string) => {
     const data = await api.post<{ token: string; user: User }>('/auth/login', { email, password });
     localStorage.setItem('token', data.token);
+    if (data.user?.isPlatformAdmin) {
+      localStorage.setItem('isPlatformAdmin', 'true');
+    }
     if (data.user?.tenantId) {
       localStorage.setItem('tenantId', data.user.tenantId);
     }

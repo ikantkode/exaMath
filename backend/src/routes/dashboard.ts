@@ -1,33 +1,31 @@
 import { Router } from 'express';
 import prisma from '../../prisma/client';
-import { authenticate, authorize, AuthRequest } from '../middleware/auth';
-import { getTenantId } from '../utils/tenant';
+import { authenticate, authorize, AuthRequest, withTenant } from '../middleware/auth';
 
 const router = Router();
 
-router.get('/', authenticate, authorize('OWNER', 'MANAGER'), async (req: AuthRequest, res) => {
+router.get('/', authenticate, withTenant, authorize('OWNER', 'MANAGER'), async (req: AuthRequest, res) => {
   try {
-    const tenantId = getTenantId(req);
-    const tenantFilter = tenantId ? { tenantId } : {};
+    const tenantId = req.tenantId!;
     
-    const projects = await prisma.project.findMany({ where: tenantFilter });
-    const totalExpenses = await prisma.expense.aggregate({ where: tenantFilter, _sum: { amountUSD: true } });
-    const totalTimesheets = await prisma.timesheet.aggregate({ where: tenantFilter, _sum: { hours: true } });
-    const officePayroll = await prisma.officePayroll.aggregate({ where: tenantFilter, _sum: { netPay: true } });
-    const fixedAssets = await prisma.fixedAsset.aggregate({ where: tenantFilter, _sum: { currentValue: true, purchasePrice: true } });
-    const payouts = await prisma.payout.aggregate({ where: tenantFilter, _sum: { amountUSD: true } });
-    const sovs = await prisma.scheduleOfValue.groupBy({ by: ['status'], where: tenantFilter, _count: { id: true } });
-    const activeProjects = await prisma.project.count({ where: { status: 'ACTIVE', ...tenantFilter } });
+    const projects = await prisma.project.findMany({ where: { tenantId } });
+    const totalExpenses = await prisma.expense.aggregate({ where: { tenantId }, _sum: { amountUSD: true } });
+    const totalTimesheets = await prisma.timesheet.aggregate({ where: { tenantId }, _sum: { hours: true } });
+    const officePayroll = await prisma.officePayroll.aggregate({ where: { tenantId }, _sum: { netPay: true } });
+    const fixedAssets = await prisma.fixedAsset.aggregate({ where: { tenantId }, _sum: { currentValue: true, purchasePrice: true } });
+    const payouts = await prisma.payout.aggregate({ where: { tenantId }, _sum: { amountUSD: true } });
+    const sovs = await prisma.scheduleOfValue.groupBy({ by: ['status'], where: { tenantId }, _count: { id: true } });
+    const activeProjects = await prisma.project.count({ where: { status: 'ACTIVE', tenantId } });
 
     const expenseByType = await prisma.expense.groupBy({
       by: ['expenseType'],
-      where: tenantFilter,
+      where: { tenantId },
       _sum: { amountUSD: true },
     });
 
     const expenseByCategory = await prisma.expense.groupBy({
       by: ['categoryId'],
-      where: tenantFilter,
+      where: { tenantId },
       _sum: { amountUSD: true },
     });
 

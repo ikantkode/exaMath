@@ -30,18 +30,17 @@ router.post('/register', async (req, res) => {
     const userCount = await prisma.user.count();
     const hashedPassword = await bcrypt.hash(password, 10);
 
-    const user = await prisma.$transaction(async (tx) => {
-      const u = await tx.user.create({
-        data: {
-          name,
-          email,
-          password: hashedPassword,
-          role: userCount === 0 ? 'OWNER' : 'CREW',
-        },
-      });
+      const user = await prisma.$transaction(async (tx) => {
+        const u = await tx.user.create({
+          data: {
+            name,
+            email,
+            password: hashedPassword,
+            role: userCount === 0 ? 'OWNER' : 'CREW',
+            isPlatformAdmin: userCount === 0,
+          },
+        });
 
-      // First user creates default tenant
-      if (userCount === 0) {
         const slug = email.split('@')[0].toLowerCase().replace(/[^a-z0-9]/g, '-');
         const schemaName = `tenant_${slug}`;
         const tenant = await tx.tenant.create({
@@ -58,13 +57,12 @@ router.post('/register', async (req, res) => {
             role: 'OWNER',
           },
         });
-      }
 
-      return u;
-    });
+        return u;
+      });
 
     const token = jwt.sign(
-      { id: user.id, role: user.role, email: user.email },
+      { id: user.id, role: user.role, email: user.email, isPlatformAdmin: user.isPlatformAdmin },
       JWT_SECRET,
       { expiresIn: '24h' }
     );
@@ -76,10 +74,12 @@ router.post('/register', async (req, res) => {
         name: user.name,
         email: user.email,
         role: user.role,
+        isPlatformAdmin: user.isPlatformAdmin,
       },
     });
-  } catch (error) {
-    res.status(500).json({ error: 'Failed to create user' });
+  } catch (error: any) {
+    console.error('Register error:', error);
+    res.status(500).json({ error: 'Failed to create user', detail: error.message });
   }
 });
 
@@ -88,7 +88,10 @@ router.post('/login', async (req, res) => {
   try {
     const { email, password } = req.body;
 
-    const user = await prisma.user.findUnique({ where: { email } });
+    const user = await prisma.user.findUnique({
+      where: { email },
+      include: { tenantUsers: { include: { tenant: { select: { id: true, name: true, slug: true } } } } },
+    });
     if (!user) {
       return res.status(401).json({ error: 'Invalid credentials' });
     }
@@ -118,6 +121,7 @@ router.post('/login', async (req, res) => {
       id: user.id,
       role: user.role,
       email: user.email,
+      isPlatformAdmin: user.isPlatformAdmin,
     };
 
     if (tenantUser) {
@@ -125,7 +129,11 @@ router.post('/login', async (req, res) => {
       payload.tenantRole = tenantUser.role;
     }
 
-    const token = jwt.sign(payload, JWT_SECRET, { expiresIn: '24h' });
+    const token = jwt.sign(
+      { ...payload, tenantRole: tenantUser?.role },
+      JWT_SECRET,
+      { expiresIn: '24h' }
+    );
 
     res.json({
       token,
@@ -134,9 +142,16 @@ router.post('/login', async (req, res) => {
         name: user.name,
         email: user.email,
         role: user.role,
+        isPlatformAdmin: user.isPlatformAdmin,
         tenantId: tenantUser?.tenantId,
         tenantRole: tenantUser?.role,
         assignedProjectIds: user.assignedProjectIds,
+        tenants: user.tenantUsers?.map((tu: any) => ({
+          tenantId: tu.tenantId,
+          tenantName: tu.tenant.name,
+          tenantSlug: tu.tenant.slug,
+          role: tu.role,
+        })),
       },
     });
   } catch (error) {
@@ -159,19 +174,20 @@ router.get('/me', authenticate, async (req: AuthRequest, res) => {
      });
      if (!user) return res.status(404).json({ error: 'User not found' });
 
-     res.json({
-       id: user.id,
-       name: user.name,
-       email: user.email,
-       role: user.role,
-       assignedProjectIds: user.assignedProjectIds,
+      res.json({
+        id: user.id,
+        name: user.name,
+        email: user.email,
+        role: user.role,
+        isPlatformAdmin: user.isPlatformAdmin,
+        assignedProjectIds: user.assignedProjectIds,
         tenants: user.tenantUsers.map((tu: any) => ({
-         tenantId: tu.tenant.id,
-         tenantName: tu.tenant.name,
-         tenantSlug: tu.tenant.slug,
-         role: tu.role,
-       })),
-     });
+          tenantId: tu.tenant.id,
+          tenantName: tu.tenant.name,
+          tenantSlug: tu.tenant.slug,
+          role: tu.role,
+        })),
+      });
    } catch (error) {
      res.status(500).json({ error: 'Failed to get user' });
    }

@@ -107,20 +107,21 @@ enum TaskStatus {
 }
 
 model User {
-  id            String    @id @default(uuid())
-  name          String
-  email         String    @unique
-  password      String
-  role          UserRole  @default(CREW)
+  id              String    @id @default(uuid())
+  name            String
+  email           String    @unique
+  password        String
+  role            UserRole  @default(CREW)
+  isPlatformAdmin Boolean   @default(false)
   assignedProjectIds String[] @default([])
-  createdAt     DateTime  @default(now())
-  updatedAt     DateTime  @updatedAt
-  timesheets    Timesheet[]
-  auditLogs     AuditLog[]
-  expenses      Expense[]
-  scheduleChats ScheduleChat[]
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+  timesheets      Timesheet[]
+  auditLogs       AuditLog[]
+  expenses        Expense[]
+  scheduleChats   ScheduleChat[]
   scheduleVersions ScheduleVersion[]
-  tenantUsers   TenantUser[]
+  tenantUsers     TenantUser[]
 }
 
 model Project {
@@ -128,7 +129,7 @@ model Project {
   tenantId              String
   name                  String
   clientName            String?
-  originalContract      Float
+  originalContract      Float         @default(0)
   totalChangeOrders     Float         @default(0)
   status                ProjectStatus @default(ACTIVE)
   estimatedCompletion   Float         @default(0)

@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
-import { useNavigate, useSearchParams } from 'react-router-dom';
+import { useNavigate, useSearchParams, useParams } from 'react-router-dom';
 import { useScheduleStore, type ScheduleSession, type ScheduleVersion, type ScheduleTask } from '@/store/scheduleStore';
 import ScheduleView from './ScheduleView';
 import { Button } from '@/components/ui/button';
@@ -53,6 +53,7 @@ function hasStartedTasks(session: ScheduleSession): ScheduleTask[] {
 export default function ManageSchedules() {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
+  const { projectId } = useParams<{ projectId: string }>();
   const { sessions, activeSession, loading, fetchSessions, deleteSession, restoreVersion, renameSession, loadSession } = useScheduleStore();
   const [showEditName, setShowEditName] = useState<string | null>(null);
   const [editNameValue, setEditNameValue] = useState('');
@@ -66,8 +67,8 @@ export default function ManageSchedules() {
   const [importFile, setImportFile] = useState<File | null>(null);
 
   useEffect(() => {
-    fetchSessions();
-  }, [fetchSessions]);
+    fetchSessions(projectId || undefined);
+  }, [fetchSessions, projectId]);
 
   useEffect(() => {
     const sessionId = searchParams.get('session');
@@ -77,7 +78,7 @@ export default function ManageSchedules() {
   }, [searchParams.get('session'), activeSession, loadSession]);
 
   const handleView = (id: string) => {
-    navigate(`/schedule?session=${id}`);
+    navigate(projectId ? `/projects/${projectId}/schedule?session=${id}` : `/schedule?session=${id}`);
   };
 
   const handleOpenEditName = (session: ScheduleSession) => {
@@ -169,7 +170,7 @@ export default function ManageSchedules() {
   };
 
   const handleNewUpload = () => {
-    navigate('/schedule/upload');
+    navigate(projectId ? `/projects/${projectId}/schedule/upload` : '/schedule/upload');
   };
 
   const getStartedTaskCount = (sessionId: string): number => {
