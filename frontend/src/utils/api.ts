@@ -87,9 +87,8 @@ export const api = {
   },
 
   download: async (url: string, filename: string): Promise<void> => {
-    const token = localStorage.getItem('token');
     const res = await fetch(`${API_URL}${url}`, {
-      headers: token ? { Authorization: `Bearer ${token}` } : {},
+      headers: getAuthHeaders(),
     });
     if (!res.ok) {
       const error = await res.json().catch(() => ({ error: 'Download failed' }));
