@@ -26,6 +26,7 @@ export interface ScheduleSession {
   projectId: string | null;
   parsedTasks: ScheduleTask[];
   chatMessages?: ChatMessage[];
+  chatSessions?: ChatSession[];
   versions?: ScheduleVersion[];
   comment?: string | null;
   createdAt: string;
@@ -43,15 +44,27 @@ export interface ScheduleVersion {
   createdAt: string;
 }
 
+export interface ChatSession {
+  id: string;
+  name: string;
+  scheduleSessionId: string;
+  createdBy: string;
+  createdByUser: { name: string };
+  messages: ChatMessage[];
+  createdAt: string;
+  updatedAt: string;
+}
+
 export interface ChatMessage {
   id: string;
   sessionId: string;
-  userId: string;
+  userId: string | null;
   userName: string;
   message: string;
   taskIds: string | null;
   createdAt: string;
   isAI?: boolean;
+  chatSessionId?: string | null;
 }
 
 export interface AIChatResponse {
@@ -65,6 +78,8 @@ interface ScheduleState {
   sessions: ScheduleSession[];
   activeSession: ScheduleSession | null;
   chatMessages: ChatMessage[];
+  chatSessions: ChatSession[];
+  activeChatSession: ChatSession | null;
   loading: boolean;
   error: string | null;
   selectedTaskId: string | null;
@@ -79,8 +94,14 @@ interface ScheduleState {
   updateTasksBatch: (updates: ({ id: string } & Partial<ScheduleTask>)[]) => Promise<void>;
   exportSchedule: (sessionId: string) => Promise<void>;
   sendChat: (sessionId: string, message: string, taskIds?: string[]) => Promise<void>;
-  sendAIChat: (sessionId: string, message: string, history?: any[]) => Promise<void>;
+  sendAIChat: (sessionId: string, message: string, history?: any[]) => Promise<string>;
+  sendAIChatWithSession: (sessionId: string, message: string, chatSessionId: string) => Promise<string>;
   fetchChat: (sessionId: string) => Promise<void>;
+  fetchChatSessions: (sessionId: string) => Promise<void>;
+  createChatSession: (sessionId: string, name?: string) => Promise<ChatSession>;
+  renameChatSession: (sessionId: string, chatSessionId: string, name: string) => Promise<void>;
+  deleteChatSession: (sessionId: string, chatSessionId: string) => Promise<void>;
+  setActiveChatSession: (session: ChatSession | null) => void;
   deleteSession: (id: string) => Promise<void>;
   setSelectedTask: (id: string | null) => void;
   clearError: () => void;
@@ -93,6 +114,8 @@ export const useScheduleStore = create<ScheduleState>((set, get) => ({
   sessions: [],
   activeSession: null,
   chatMessages: [],
+  chatSessions: [],
+  activeChatSession: null,
   loading: false,
   error: null,
   selectedTaskId: null,
@@ -244,7 +267,7 @@ export const useScheduleStore = create<ScheduleState>((set, get) => ({
       const userMsg: ChatMessage = {
         id: `user-${Date.now()}`,
         sessionId,
-        userId: localStorage.getItem('userId') || '',
+        userId: localStorage.getItem('userId') || null,
         userName: localStorage.getItem('userName') || 'You',
         message,
         taskIds: null,
@@ -256,7 +279,7 @@ export const useScheduleStore = create<ScheduleState>((set, get) => ({
       const aiMsg: ChatMessage = {
         id: `ai-${Date.now()}`,
         sessionId,
-        userId: 'ai',
+        userId: null,
         userName: 'AI Assistant',
         message: '',
         taskIds: null,
@@ -276,6 +299,132 @@ export const useScheduleStore = create<ScheduleState>((set, get) => ({
         ),
         loading: false,
       }));
+
+      return response.message;
+    } catch (e: any) {
+      set({ error: e.message, loading: false });
+      throw e;
+    }
+  },
+
+  sendAIChatWithSession: async (sessionId: string, message: string, chatSessionId: string) => {
+    set({ loading: true });
+    try {
+      const userMsg: ChatMessage = {
+        id: `user-${Date.now()}`,
+        sessionId,
+        userId: localStorage.getItem('userId') || null,
+        userName: localStorage.getItem('userName') || 'You',
+        message,
+        taskIds: null,
+        createdAt: new Date().toISOString(),
+        isAI: false,
+        chatSessionId,
+      };
+
+      // Optimistically add user message
+      const currentState = get();
+      const session = currentState.chatSessions.find((s) => s.id === chatSessionId);
+      if (session) {
+        const updatedMessages = [...session.messages, userMsg];
+        set({
+          chatSessions: currentState.chatSessions.map((s) =>
+            s.id === chatSessionId ? { ...s, messages: updatedMessages } : s
+          ),
+          activeChatSession: session ? { ...session, messages: updatedMessages } : null,
+        });
+      }
+
+      // Connect to SSE stream
+      const apiBaseUrl = import.meta.env.VITE_API_URL || '/api';
+      const url = `${apiBaseUrl}/schedules/${sessionId}/ai-chat`;
+      const token = localStorage.getItem('token');
+      const response = await fetch(url, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+          'x-tenant-id': localStorage.getItem('tenantId') || '',
+        },
+        body: JSON.stringify({
+          message,
+          chatSessionId,
+        }),
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData.error || `HTTP ${response.status}`);
+      }
+
+      const reader = response.body?.getReader();
+      if (!reader) {
+        throw new Error('Stream not available');
+      }
+
+      const decoder = new TextDecoder();
+      let fullContent = '';
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+
+        const chunk = decoder.decode(value, { stream: true });
+        const lines = chunk.split('\n');
+
+        for (const line of lines) {
+          if (!line.startsWith('data: ')) continue;
+          const data = JSON.parse(line.slice(6));
+
+          if (data.type === 'chunk') {
+            fullContent = data.content;
+            // Update the active session's last message with the streamed content
+            const currentState = get();
+            const currentSession = currentState.chatSessions.find((s) => s.id === chatSessionId);
+            if (currentSession && currentSession.messages.length > 0) {
+              const lastMsg = currentSession.messages[currentSession.messages.length - 1];
+              if (lastMsg.userName === 'AI Assistant') {
+                const updatedMessages = [...currentSession.messages];
+                updatedMessages[updatedMessages.length - 1] = {
+                  ...lastMsg,
+                  message: fullContent,
+                };
+                set({
+                  chatSessions: currentState.chatSessions.map((s) =>
+                    s.id === chatSessionId ? { ...s, messages: updatedMessages } : s
+                  ),
+                  activeChatSession: currentSession ? { ...currentSession, messages: updatedMessages } : null,
+                });
+              }
+            }
+          } else if (data.type === 'done') {
+            // Ensure final state is saved to server
+            const currentState = get();
+            const currentSession = currentState.chatSessions.find((s) => s.id === chatSessionId);
+            if (currentSession && currentSession.messages.length > 0) {
+              const lastMsg = currentSession.messages[currentSession.messages.length - 1];
+              if (lastMsg.userName === 'AI Assistant') {
+                const updatedMessages = [...currentSession.messages];
+                updatedMessages[updatedMessages.length - 1] = {
+                  ...lastMsg,
+                  id: data.chatId,
+                };
+                set({
+                  chatSessions: currentState.chatSessions.map((s) =>
+                    s.id === chatSessionId ? { ...s, messages: updatedMessages } : s
+                  ),
+                  activeChatSession: currentSession ? { ...currentSession, messages: updatedMessages } : null,
+                });
+              }
+            }
+          } else if (data.type === 'error') {
+            throw new Error(data.message || 'Streaming error');
+          }
+        }
+      }
+
+      set({ loading: false });
+      return fullContent;
     } catch (e: any) {
       set({ error: e.message, loading: false });
       throw e;
@@ -286,6 +435,67 @@ export const useScheduleStore = create<ScheduleState>((set, get) => ({
     const messages = await api.get<ChatMessage[]>(`/schedules/${sessionId}/chat`);
     set({ chatMessages: messages });
   },
+
+  fetchChatSessions: async (sessionId: string) => {
+    try {
+      const sessions = await api.get<ChatSession[]>(`/schedules/${sessionId}/chat-sessions`);
+      const normalized = sessions.map((s: any) => ({
+        ...s,
+        createdByUser: s.createdByUser || { name: 'Unknown' },
+        messages: (s.messages || []).map((m: any) => ({
+          ...m,
+          userName: m.userName || m.user?.name || 'Unknown',
+        })),
+      }));
+      set({ chatSessions: normalized, activeChatSession: normalized[0] || null });
+    } catch (e: any) {
+      set({ error: e.message });
+    }
+  },
+
+  createChatSession: async (sessionId: string, name?: string) => {
+    try {
+      const session = await api.post<ChatSession>(`/schedules/${sessionId}/chat-sessions`, { name });
+      set((state) => ({
+        chatSessions: [session, ...state.chatSessions],
+        activeChatSession: session,
+      }));
+      return session;
+    } catch (e: any) {
+      set({ error: e.message });
+      throw e;
+    }
+  },
+
+  renameChatSession: async (sessionId: string, chatSessionId: string, name: string) => {
+    try {
+      const updated = await api.patch<ChatSession>(`/schedules/${sessionId}/chat-sessions/${chatSessionId}`, { name });
+      set({
+        chatSessions: get().chatSessions.map((s) =>
+          s.id === chatSessionId ? { ...s, name: updated.name } : s
+        ),
+        activeChatSession: get().activeChatSession?.id === chatSessionId ? { ...get().activeChatSession!, name: updated.name } : get().activeChatSession,
+      });
+    } catch (e: any) {
+      set({ error: e.message });
+      throw e;
+    }
+  },
+
+  deleteChatSession: async (sessionId: string, chatSessionId: string) => {
+    try {
+      await api.delete(`/schedules/${sessionId}/chat-sessions/${chatSessionId}`);
+      set({
+        chatSessions: get().chatSessions.filter((s) => s.id !== chatSessionId),
+        activeChatSession: get().activeChatSession?.id === chatSessionId ? null : get().activeChatSession,
+      });
+    } catch (e: any) {
+      set({ error: e.message });
+      throw e;
+    }
+  },
+
+  setActiveChatSession: (session: ChatSession | null) => set({ activeChatSession: session }),
 
   deleteSession: async (id: string) => {
     await api.delete(`/schedules/${id}`);

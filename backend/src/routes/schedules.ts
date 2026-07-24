@@ -402,62 +402,31 @@ router.get('/', authenticate, withTenant, async (req: AuthRequest, res) => {
   }
 });
 
-// ─── AI Chat with Tool Calling ───────────────────────────────────────────────
+// ─── AI Chat with Streaming (SSE) ────────────────────────────────────────────
 
 const VLLM_URL = process.env.VLLM_URL || 'http://192.168.1.201:7702/v1';
 const VLLM_MODEL = process.env.VLLM_MODEL || 'mellum2-thinking';
 
-async function callLLM(messages: any[], tools?: any[], forceToolChoice?: boolean): Promise<any> {
-  const payload: any = {
-    model: VLLM_MODEL,
-    messages,
-    temperature: 0.1,
-    max_tokens: 8192,
-  };
-  if (tools && tools.length > 0) {
-    payload.tools = tools;
-    payload.tool_choice = forceToolChoice ? 'required' : 'auto';
-  }
-  
-  const lastMsg = messages[messages.length - 1];
-  const fs = require('fs');
-  fs.appendFileSync('/tmp/vllm-debug.log', `[vLLM] ${new Date().toISOString()} msgs=${messages.length} tools=${tools?.length || 0} tool_choice=${payload.tool_choice} last_role=${lastMsg?.role}\n`);
-  if (lastMsg?.role === 'tool') {
-    fs.appendFileSync('/tmp/vllm-debug.log', `[vLLM] Tool result: ${(lastMsg.content || '').substring(0, 300)}\n`);
-  }
-  
-  try {
-    const res = await axios.post(`${VLLM_URL}/chat/completions`, payload);
-    const choice = res.data.choices?.[0]?.message;
-    const finishReason = res.data.choices?.[0]?.finish_reason;
-    
-    console.log('[vLLM] Response: tool_calls=', !!choice?.tool_calls, 'content=', choice?.content ? choice.content.substring(0, 100) : 'null', 'reasoning=', choice?.reasoning ? choice.reasoning.substring(0, 100) : 'null', 'finish_reason=', finishReason);
-    if (choice?.tool_calls) {
-      console.log('[vLLM] Tool calls:', JSON.stringify(choice.tool_calls.map((tc: any) => ({ name: tc.function.name, args: tc.function.arguments }))));
-    } else {
-      console.log('[vLLM] Full message keys:', Object.keys(choice || {}));
-      console.log('[vLLM] Raw choice keys:', JSON.stringify(Object.keys(choice || {})));
-      console.log('[vLLM] tool_calls raw:', JSON.stringify(choice?.tool_calls));
-      console.log('[vLLM] finish_reason raw:', JSON.stringify(finishReason));
-    }
-    
-    return res.data;
-  } catch (e: any) {
-    const errMsg = e.response?.data || e.message;
-    console.error('[vLLM] ERROR:', JSON.stringify(errMsg).substring(0, 500));
-    throw e;
-  }
-}
-
+// AI chat with streaming (SSE)
 router.post('/:id/ai-chat', authenticate, async (req: AuthRequest, res) => {
   const fs = require('fs');
   fs.appendFileSync('/tmp/vllm-debug.log', `[AI] ${new Date().toISOString()} tenant=${req.tenantId} id=${req.params.id} msg=${(req.body.message||'').substring(0,50)}\n`);
+
+  // Set SSE headers
+  res.setHeader('Content-Type', 'text/event-stream');
+  res.setHeader('Cache-Control', 'no-cache');
+  res.setHeader('Connection', 'keep-alive');
+  res.setHeader('X-Accel-Buffering', 'no');
+
+  const sendSSE = (data: any) => {
+    res.write(`data: ${JSON.stringify(data)}\n\n`);
+  };
+
   try {
-    const { message, history } = req.body;
+    const { message, history, chatSessionId } = req.body;
     const tenantId = req.tenantId!;
     if (!message) return res.status(400).json({ error: 'Message is required' });
 
-    // Build system prompt with schedule context
     const session = await prisma.scheduleSession.findUnique({
       where: { id: req.params.id, tenantId: req.tenantId },
       include: { project: { select: { name: true } } },
@@ -488,13 +457,10 @@ INSTRUCTIONS:
       { role: 'user' as const, content: message },
     ];
 
-    // Strategy: detect intent from user message, format answer server-side
     const userMsgLower = message.toLowerCase();
     let aiAnswer = '';
-    let iteration = 0;
-    let response: any;
     let assistantMessage: any;
-    let finishReason: string | undefined;
+    let reasoning: string | null = null;
 
     if (userMsgLower.includes('version') || userMsgLower.includes('history')) {
       const versionsRaw = await prisma.scheduleVersion.findMany({
@@ -502,11 +468,10 @@ INSTRUCTIONS:
         select: { versionNumber: true, description: true, createdAt: true, createdBy: { select: { name: true } } },
         orderBy: { versionNumber: 'asc' },
       });
-      const v = versionsRaw;
-      if (v.length === 0) {
+      if (versionsRaw.length === 0) {
         aiAnswer = 'There are no versions recorded for this schedule yet.';
       } else {
-        const lines = v.map((ver) => {
+        const lines = versionsRaw.map((ver) => {
           const date = new Date(ver.createdAt).toLocaleString();
           return `- **Version ${ver.versionNumber}**: ${date} — ${ver.createdBy?.name || 'Unknown'}${ver.description ? ` (${ver.description})` : ''}`;
         });
@@ -573,56 +538,129 @@ INSTRUCTIONS:
       });
       aiAnswer = `Here is the task status summary for **${session.name}**:\n\n- **Total tasks**: ${total}\n\n${lines.join('\n')}`;
     } else {
-      // Open-ended question — use LLM with full task data as context
+      // Open-ended — stream via LLM
       const tasks = await prisma.scheduleTask.findMany({
         where: { sessionId: session.id, session: { tenantId } },
         select: { id: true, name: true, status: true, startDate: true, isCritical: true },
       });
       messages.push({ role: 'assistant' as const, content: `Here is the task data:` });
       messages.push({ role: 'tool' as const, tool_call_id: 'fallback', content: JSON.stringify({ tasks, total: tasks.length }) });
-      response = await callLLM(messages);
-      assistantMessage = response.choices[0].message;
-      finishReason = response.choices[0].finish_reason;
-      iteration = 1;
-      console.log('[AI] LLM fallback, iteration=', iteration, 'finishReason=', finishReason);
+
+      const chatPayload: any = {
+        model: VLLM_MODEL,
+        messages,
+        temperature: 0.1,
+        max_tokens: 8192,
+        stream: true,
+      };
+
+      sendSSE({ type: 'start', message });
+
+      try {
+        const llmRes = await axios.post(`${VLLM_URL}/chat/completions`, chatPayload, {
+          responseType: 'stream',
+        });
+
+        let fullContent = '';
+        let fullReasoning = '';
+        let buffer = '';
+
+        for await (const chunk of llmRes.data) {
+          const text = chunk.toString('utf-8');
+          buffer += text;
+          const lines = buffer.split('\n');
+          buffer = lines.pop() || '';
+
+          for (const line of lines) {
+            if (!line.trim() || !line.startsWith('data: ')) continue;
+            const data = line.slice(6).trim();
+            if (data === '[DONE]') continue;
+            try {
+              const parsed = JSON.parse(data);
+              const choice = parsed.choices?.[0];
+              if (!choice) continue;
+
+              const delta = choice.delta;
+              if (delta?.content) fullContent += delta.content;
+              if (delta?.reasoning) fullReasoning += delta.reasoning;
+
+              sendSSE({
+                type: 'chunk',
+                content: fullContent,
+                reasoning: fullReasoning,
+              });
+            } catch {}
+          }
+        }
+
+        // Process trailing buffer
+        if (buffer.trim()) {
+          if (buffer.trim().startsWith('data: ')) {
+            const data = buffer.trim().slice(6).trim();
+            if (data !== '[DONE]') {
+              try {
+                const parsed = JSON.parse(data);
+                const choice = parsed.choices?.[0];
+                if (choice) {
+                  if (choice.delta?.content) fullContent += choice.delta.content;
+                  if (choice.delta?.reasoning) fullReasoning += choice.delta.reasoning;
+                }
+              } catch {}
+            }
+          }
+        }
+
+        assistantMessage = { content: fullContent, reasoning: fullReasoning || null };
+      } catch (llmError: any) {
+        console.error('[AI] Streaming error:', llmError.message);
+        aiAnswer = 'Sorry, I encountered an error while processing your request.';
+      }
     }
 
-    // For LLM fallback, extract answer from response (content or reasoning)
     let finalContent = aiAnswer;
     if (!aiAnswer && assistantMessage) {
       finalContent = assistantMessage.content || assistantMessage.reasoning || 'I could not generate a response.';
     }
-    const reasoning = assistantMessage?.reasoning || null;
+    reasoning = assistantMessage?.reasoning || (assistantMessage?.content && assistantMessage.content !== finalContent ? assistantMessage.reasoning : null);
+
+    // For LLM fallback, extract answer from response (content or reasoning)
+    if (!aiAnswer && assistantMessage && !reasoning) {
+      reasoning = null;
+    }
+
+    // Send final content as SSE
+    sendSSE({ type: 'chunk', content: finalContent, reasoning: reasoning });
 
     // Save to chat history
-    const chat = await prisma.scheduleChat.create({
+    const userChat = await prisma.scheduleChat.create({
       data: {
         sessionId: req.params.id,
         userId: req.user!.id,
         message: `[AI] ${message}`,
+        isAI: false,
         tenantId: req.tenantId!,
+        chatSessionId: chatSessionId || null,
       },
     });
 
-    await prisma.scheduleChat.create({
+    const aiChat = await prisma.scheduleChat.create({
       data: {
         sessionId: req.params.id,
         userId: req.user!.id,
         message: finalContent,
+        isAI: true,
         tenantId: req.tenantId!,
+        chatSessionId: chatSessionId || null,
       },
     });
 
-    res.json({
-      message: finalContent,
-      reasoning,
-      chatId: chat.id,
-      iteration,
-    });
+    // End stream
+    sendSSE({ type: 'done', chatId: aiChat.id, userChatId: userChat.id });
+    res.end();
   } catch (e: any) {
     console.error('AI chat error:', e);
-    if (e.code === 'P2025') return res.status(404).json({ error: 'Schedule not found' });
-    res.status(500).json({ error: e.message || 'Failed to process AI chat' });
+    sendSSE({ type: 'error', message: e.message || 'Failed to process AI chat' });
+    res.end();
   }
 });
 
@@ -792,10 +830,77 @@ router.get('/:id/export', authenticate, async (req: AuthRequest, res) => {
   }
 });
 
+// Chat sessions CRUD
+router.get('/:id/chat-sessions', authenticate, async (req: AuthRequest, res) => {
+  try {
+    const sessions = await prisma.scheduleChatSession.findMany({
+      where: { scheduleSessionId: req.params.id, tenantId: req.tenantId },
+      include: { createdByUser: { select: { name: true } }, messages: { orderBy: { createdAt: 'asc' } } },
+      orderBy: { createdAt: 'desc' },
+    });
+    const normalized = sessions.map((s: any) => ({
+      ...s,
+      messages: (s.messages || []).map((m: any) => ({ ...m, userName: m.user?.name || 'Unknown' })),
+    }));
+    res.json(normalized);
+  } catch {
+    res.status(500).json({ error: 'Failed to fetch chat sessions' });
+  }
+});
+
+router.post('/:id/chat-sessions', authenticate, async (req: AuthRequest, res) => {
+  try {
+    const { name } = req.body;
+    const session = await prisma.scheduleChatSession.create({
+      data: {
+        name: name || `Chat ${new Date().toLocaleString()}`,
+        scheduleSessionId: req.params.id,
+        tenantId: req.tenantId!,
+        createdBy: req.user!.id,
+      },
+      include: { createdByUser: { select: { name: true } } },
+    });
+    res.status(201).json(session);
+  } catch (e: any) {
+    res.status(500).json({ error: e.message || 'Failed to create chat session' });
+  }
+});
+
+router.patch('/:id/chat-sessions/:sessionId', authenticate, async (req: AuthRequest, res) => {
+  try {
+    const { name } = req.body;
+    const session = await prisma.scheduleChatSession.findFirst({
+      where: { id: req.params.sessionId, scheduleSessionId: req.params.id, tenantId: req.tenantId },
+    });
+    if (!session) return res.status(404).json({ error: 'Chat session not found' });
+
+    const updated = await prisma.scheduleChatSession.update({
+      where: { id: req.params.sessionId },
+      data: { name: name?.trim() || session.name },
+    });
+    res.json(updated);
+  } catch (e: any) {
+    res.status(500).json({ error: e.message || 'Failed to update chat session' });
+  }
+});
+
+router.delete('/:id/chat-sessions/:sessionId', authenticate, async (req: AuthRequest, res) => {
+  try {
+    const session = await prisma.scheduleChatSession.findFirst({
+      where: { id: req.params.sessionId, scheduleSessionId: req.params.id, tenantId: req.tenantId },
+    });
+    if (!session) return res.status(404).json({ error: 'Chat session not found' });
+    await prisma.scheduleChatSession.delete({ where: { id: req.params.sessionId } });
+    res.json({ message: 'Chat session deleted' });
+  } catch (e: any) {
+    res.status(500).json({ error: e.message || 'Failed to delete chat session' });
+  }
+});
+
 // Chat
 router.post('/:id/chat', authenticate, async (req: AuthRequest, res) => {
   try {
-    const { message, taskIds } = req.body;
+    const { message, taskIds, chatSessionId } = req.body;
     if (!message) return res.status(400).json({ error: 'Message is required' });
 
     const chat = await prisma.scheduleChat.create({
@@ -805,11 +910,20 @@ router.post('/:id/chat', authenticate, async (req: AuthRequest, res) => {
         message,
         taskIds: taskIds ? JSON.stringify(taskIds) : null,
         tenantId: req.tenantId!,
+        chatSessionId: chatSessionId || null,
       },
-      include: { user: { select: { name: true } } },
     });
 
-    res.status(201).json(chat);
+    // Manually fetch user name to avoid Prisma 6 strict mode errors with orphaned userIds
+    const chatWithUser = await prisma.scheduleChat.findUnique({
+      where: { id: chat.id },
+      include: { user: { select: { name: true } } },
+    });
+    const response = {
+      ...chatWithUser,
+      userName: chatWithUser?.user?.name || 'Unknown',
+    };
+    res.status(201).json(response);
   } catch (e: any) {
     res.status(500).json({ error: e.message || 'Failed to send message' });
   }
@@ -820,10 +934,13 @@ router.get('/:id/chat', authenticate, async (req: AuthRequest, res) => {
   try {
     const messages = await prisma.scheduleChat.findMany({
       where: { sessionId: req.params.id, tenantId: req.tenantId },
-      include: { user: { select: { name: true } } },
       orderBy: { createdAt: 'asc' },
     });
-    res.json(messages);
+    const normalized = (messages || []).map((m: any) => ({
+      ...m,
+      userName: m.user?.name || 'Unknown',
+    }));
+    res.json(normalized);
   } catch {
     res.status(500).json({ error: 'Failed to fetch messages' });
   }
