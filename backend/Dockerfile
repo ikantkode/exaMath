@@ -15,4 +15,4 @@ COPY --from=builder /app/dist ./dist
 COPY --from=builder /app/prisma ./prisma
 RUN DATABASE_URL="postgresql://localhost:5432/exaMath" npx prisma generate
 EXPOSE 3001
-CMD ["sh", "-c", "npx prisma migrate deploy && npm start"]
+CMD ["sh", "-c", "export DATABASE_URL=${DATABASE_URL} && npx prisma migrate deploy && npm start"]
