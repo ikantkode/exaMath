@@ -1,7 +1,11 @@
 import { PrismaClient } from '@prisma/client';
 
 async function ensureDatabaseExists() {
-  const url = process.env.DATABASE_URL!;
+  const url = process.env.DATABASE_URL;
+  if (!url) {
+    console.warn('DATABASE_URL not set, skipping database creation check');
+    return;
+  }
   // Extract DB name from URL: everything after the last /
   const lastSlash = url.lastIndexOf('/');
   const dbName = url.substring(lastSlash + 1).split('?')[0];
